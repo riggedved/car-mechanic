@@ -9,6 +9,8 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 
 logger = logging.getLogger(__name__)
 
+from dotenv import load_dotenv
+
 # Try importing google.generativeai
 try:
     import google.generativeai as genai
@@ -18,7 +20,13 @@ except ImportError:
 
 
 def get_gemini_client():
-    api_key = getattr(settings, 'GEMINI_API_KEY', '') or os.getenv('GEMINI_API_KEY', '')
+    # Dynamically reload .env so updates to GEMINI_API_KEY are reflected immediately
+    env_file = os.path.join(getattr(settings, 'BASE_DIR', ''), '.env')
+    if os.path.exists(env_file):
+        load_dotenv(env_file, override=True)
+
+    api_key = os.getenv('GEMINI_API_KEY', '') or getattr(settings, 'GEMINI_API_KEY', '')
+    api_key = api_key.strip()
     if not api_key or not GENAI_AVAILABLE:
         return None
     try:
@@ -29,9 +37,15 @@ def get_gemini_client():
         return None
 
 
-def get_model(client):
-    """Try available flash and pro models."""
-    for model_name in ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-pro']:
+GEMINI_MODELS = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro']
+
+
+def get_model(client, preferred_model=None):
+    """Returns a model instance or iterates through available models."""
+    models_to_test = [preferred_model] if preferred_model else GEMINI_MODELS
+    for model_name in models_to_test:
+        if not model_name:
+            continue
         try:
             return client.GenerativeModel(model_name)
         except Exception:
@@ -81,15 +95,16 @@ def chat_with_gemini(conversation_history: list, current_message: str, vehicle_i
     prompt += f"Customer's Current Message: {current_message}\n"
     prompt += "Technician (Respond directly to what they said, explain the exact mechanical cause, and advise next steps):"
 
-    try:
-        model = get_model(client)
-        if model:
+    for model_name in GEMINI_MODELS:
+        try:
+            model = client.GenerativeModel(model_name)
             response = model.generate_content(prompt)
             if response and response.text:
                 return response.text.strip()
-    except Exception as e:
-        logger.info(f"Gemini API chat call skipped/failed ({e}). Using expert mechanic heuristic.")
-        
+        except Exception as e:
+            logger.info(f"Model {model_name} chat failed ({e}), attempting next candidate.")
+            continue
+
     return (
         f"Understood. For {vehicle_info or 'this vehicle'}, this symptom usually stems from either a sensor calibration error, "
         "a mechanical vacuum leak, or component fatigue under load.\n\n"
@@ -98,46 +113,81 @@ def chat_with_gemini(conversation_history: list, current_message: str, vehicle_i
     )
 
 
-def analyze_multimodal_media(file_path: str, file_type: str, user_prompt: str = "") -> str:
+def analyze_multimodal_media(file_path: str, file_type: str, user_prompt: str = "") -> tuple[str, bool]:
     """
     Inspects image, audio, or video files for mechanical faults using Gemini Multimodal.
+    Returns (response_text, is_ai_generated).
     """
     client = get_gemini_client()
     if not client or not os.path.exists(file_path):
-        return (
-            f"Received the {file_type} file for inspection. Our workshop diagnostic system has logged the file.\n\n"
-            "To help me cross-reference the physical evidence:\n"
-            "• Exactly where on the vehicle was this captured?\n"
-            "• Does the symptom occur constantly or intermittently?"
-        )
-
-    try:
-        model = get_model(client)
-        if model:
-            technician_prompt = (
-                "You are an ASE Master Certified mechanic inspecting an uploaded automotive media diagnostic file. "
-                "Analyze what you observe: identify the automotive component, look for signs of wear, hairline cracks, "
-                "scoring, fluid leaks/discoloration, warning indicators, or abnormal acoustic frequency (knocks, squeals, rattles). "
-                "Give a comprehensive, 3-4 sentence professional mechanic assessment, explain the potential mechanical failure, "
-                "and clearly state what physical inspection step the technician should perform next. Use INR (₹) if discussing repairs."
+        key_missing = not bool(os.getenv('GEMINI_API_KEY', '').strip())
+        notice = ""
+        if key_missing:
+            notice = (
+                "⚠️ *AI Vision Offline*: A `GEMINI_API_KEY` is not set in `backend/.env`. "
+                "The workshop heuristic engine has logged this file. To enable live Gemini AI visual diagnosis, "
+                "paste your API key from Google AI Studio into `backend/.env`.\n\n"
             )
 
-            if file_type == 'image':
-                img = Image.open(file_path)
-                response = model.generate_content([technician_prompt, img, user_prompt or "Inspect this vehicle component photo."])
-                return response.text.strip()
-                
-            elif file_type in ['audio', 'video']:
-                uploaded_file = client.upload_file(path=file_path)
-                response = model.generate_content([technician_prompt, uploaded_file, user_prompt or f"Analyze this automotive {file_type} recording."])
-                return response.text.strip()
+        return (
+            f"{notice}Received your {file_type} for inspection.\n\n"
+            "To help me cross-reference the physical evidence:\n"
+            "• Exactly which component or area on the vehicle was this captured from?\n"
+            "• Does the symptom occur constantly or only under specific driving conditions?",
+            False
+        )
+
+    technician_prompt = (
+        "You are an ASE Master Certified mechanic inspecting an uploaded automotive media diagnostic file. "
+        "Analyze what you observe: identify the automotive component, look for signs of wear, hairline cracks, "
+        "scoring, fluid leaks/discoloration, warning indicators, or abnormal acoustic frequency (knocks, squeals, rattles). "
+        "Give a comprehensive, 3-4 sentence professional mechanic assessment, explain the potential mechanical failure, "
+        "and clearly state what physical inspection step the technician should perform next. Use INR (₹) if discussing repairs."
+    )
+
+    try:
+        if file_type == 'image':
+            img = Image.open(file_path)
+            if img.mode not in ('RGB', 'L'):
+                img = img.convert('RGB')
+
+            for model_name in GEMINI_MODELS:
+                try:
+                    model = client.GenerativeModel(model_name)
+                    response = model.generate_content([
+                        technician_prompt,
+                        img,
+                        user_prompt or "Inspect this vehicle component photo and identify any mechanical wear or fault."
+                    ])
+                    if response and response.text:
+                        return response.text.strip(), True
+                except Exception as model_err:
+                    logger.info(f"Model {model_name} failed on image analysis: {model_err}")
+                    continue
+
+        elif file_type in ['audio', 'video']:
+            uploaded_file = client.upload_file(path=file_path)
+            for model_name in GEMINI_MODELS:
+                try:
+                    model = client.GenerativeModel(model_name)
+                    response = model.generate_content([
+                        technician_prompt,
+                        uploaded_file,
+                        user_prompt or f"Analyze this automotive {file_type} recording for abnormal frequency, knocks, or squeals."
+                    ])
+                    if response and response.text:
+                        return response.text.strip(), True
+                except Exception as model_err:
+                    logger.info(f"Model {model_name} failed on {file_type} analysis: {model_err}")
+                    continue
 
     except Exception as e:
         logger.warning(f"Multimodal inspection error: {e}")
 
     return (
         f"Inspected the uploaded {file_type}. The diagnostic visual/audio evidence has been recorded in your session.\n\n"
-        "To pinpoint the exact mechanical failure, tell me if this symptom changes with vehicle speed, engine temperature, or steering angle."
+        "To pinpoint the exact mechanical failure, tell me if this symptom changes with vehicle speed, engine temperature, or steering angle.",
+        False
     )
 
 

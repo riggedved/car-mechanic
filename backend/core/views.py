@@ -102,26 +102,25 @@ class ChatView(APIView):
         reply_text = ""
         is_ai = False
 
-        # Strategy A: Check for simple greetings (0 AI Tokens)
-        if is_greeting(user_text):
-            reply_text = get_mechanic_greeting()
-            is_ai = False
-
-        # Strategy B: Reject off-topic / non-automotive queries (0 AI Tokens)
-        elif is_clearly_irrelevant(user_text):
-            reply_text = get_polite_rejection()
-            is_ai = False
-
-        # Strategy C: Check if media was uploaded with message (Multimodal AI)
-        elif media_obj and media_obj.file:
-            reply_text = analyze_multimodal_media(
+        # Strategy A: Check if media was uploaded with message (Multimodal AI has highest priority)
+        if media_obj and media_obj.file:
+            reply_text, is_ai = analyze_multimodal_media(
                 media_obj.file.path,
                 media_obj.file_type,
                 user_text
             )
             media_obj.ai_analysis = reply_text
             media_obj.save()
-            is_ai = True
+
+        # Strategy B: Check for simple greetings (0 AI Tokens)
+        elif is_greeting(user_text):
+            reply_text = get_mechanic_greeting()
+            is_ai = False
+
+        # Strategy C: Reject off-topic / non-automotive queries (0 AI Tokens)
+        elif is_clearly_irrelevant(user_text):
+            reply_text = get_polite_rejection()
+            is_ai = False
 
         # Strategy D: Automotive Mechanical Query (Dynamic AI with Rule Fallback)
         elif is_automotive(user_text):
