@@ -57,13 +57,12 @@ class ChatSessionSerializer(serializers.ModelSerializer):
     messages = ChatMessageSerializer(many=True, read_only=True)
     diagnoses = DiagnosisSerializer(many=True, read_only=True)
     media_uploads = UploadedMediaSerializer(many=True, read_only=True)
-    bookings = BookingSerializer(many=True, read_only=True)
 
     class Meta:
         model = ChatSession
         fields = [
             'id', 'vehicle_make', 'vehicle_model', 'vehicle_year',
             'vehicle_mileage', 'current_issue', 'created_at', 'updated_at',
-            'messages', 'diagnoses', 'media_uploads', 'bookings'
+            'messages', 'diagnoses', 'media_uploads'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
