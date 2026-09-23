@@ -17,6 +17,9 @@ env/
 backend/db.sqlite3
 media/
 backend/media/
+staticfiles/
+backend/staticfiles/
+*.pem
 
 # Node
 node_modules/
