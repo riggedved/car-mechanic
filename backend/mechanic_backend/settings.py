@@ -124,9 +124,10 @@ if cors_origins_env:
 else:
     CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'True').lower() in ('true', '1', 'yes')
     CORS_ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ]
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://car-mechanic-vexy1.vercel.app",
+]
 CORS_ALLOW_CREDENTIALS = os.getenv('CORS_ALLOW_CREDENTIALS', 'False').lower() in ('true', '1', 'yes')
 
 # CSRF configuration
