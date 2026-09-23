@@ -1,7 +1,6 @@
 import random
 import string
 import mimetypes
-from django.conf import settings
 from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -12,13 +11,8 @@ from .serializers import (
     ChatSessionSerializer, ChatMessageSerializer,
     UploadedMediaSerializer, DiagnosisSerializer, BookingSerializer
 )
-from .services.classifier import (
-    is_greeting, is_clearly_irrelevant, is_automotive,
-    extract_vehicle_details, get_polite_rejection,
-    get_mechanic_greeting, generate_rule_based_followup
-)
 from .services.gemini_service import (
-    chat_with_gemini, analyze_multimodal_media, synthesize_diagnosis, get_gemini_client
+    generate_chat_response, analyze_vehicle_media, generate_diagnosis, GeminiException
 )
 
 
@@ -29,10 +23,6 @@ def generate_booking_code():
 
 
 class ChatView(APIView):
-    """
-    POST /api/chat/
-    Orchestrates conversation with traditional logic first to minimize AI usage.
-    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -42,7 +32,7 @@ class ChatView(APIView):
 
         if not user_text and not media_id:
             return Response(
-                {"error": "Either 'message' or 'media_id' must be provided."},
+                {"success": False, "error": "Either 'message' or 'media_id' must be provided."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -52,21 +42,12 @@ class ChatView(APIView):
             try:
                 session = ChatSession.objects.get(id=session_id)
             except (ChatSession.DoesNotExist, ValueError):
-                session = None
+                pass
 
         if not session:
             session = ChatSession.objects.create()
 
-        # 2. Extract vehicle information using traditional regex parser
-        vehicle_updates = extract_vehicle_details(user_text)
-        if vehicle_updates.get('year') and not session.vehicle_year:
-            session.vehicle_year = vehicle_updates['year']
-        if vehicle_updates.get('make') and not session.vehicle_make:
-            session.vehicle_make = vehicle_updates['make']
-        if vehicle_updates.get('mileage') and not session.vehicle_mileage:
-            session.vehicle_mileage = vehicle_updates['mileage']
-
-        # Manual overrides if sent from frontend vehicle selector
+        # Update vehicle overrides
         if request.data.get('vehicle_make'):
             session.vehicle_make = request.data.get('vehicle_make')
         if request.data.get('vehicle_model'):
@@ -75,10 +56,9 @@ class ChatView(APIView):
             session.vehicle_year = request.data.get('vehicle_year')
         if request.data.get('vehicle_mileage'):
             session.vehicle_mileage = request.data.get('vehicle_mileage')
-
         session.save()
 
-        # 3. Associate media if provided
+        # 2. Associate media if provided
         media_obj = None
         if media_id:
             try:
@@ -88,7 +68,7 @@ class ChatView(APIView):
             except (UploadedMedia.DoesNotExist, ValueError):
                 pass
 
-        # 4. Save User Message
+        # 3. Save User Message
         user_message_obj = ChatMessage.objects.create(
             session=session,
             sender='user',
@@ -98,66 +78,39 @@ class ChatView(APIView):
 
         vehicle_str = f"{session.vehicle_year} {session.vehicle_make} {session.vehicle_model}".strip()
 
-        # 5. Traditional Logic & AI Minimization Strategy
+        # 4. Invoke AI
         reply_text = ""
-        is_ai = False
-
-        # Strategy A: Check if media was uploaded with message (Multimodal AI has highest priority)
-        if media_obj and media_obj.file:
-            reply_text, is_ai = analyze_multimodal_media(
-                media_obj.file.path,
-                media_obj.file_type,
-                user_text
-            )
-            media_obj.ai_analysis = reply_text
-            media_obj.save()
-
-        # Strategy B: Check for simple greetings (0 AI Tokens)
-        elif is_greeting(user_text):
-            reply_text = get_mechanic_greeting()
-            is_ai = False
-
-        # Strategy C: Reject off-topic / non-automotive queries (0 AI Tokens)
-        elif is_clearly_irrelevant(user_text):
-            reply_text = get_polite_rejection()
-            is_ai = False
-
-        # Strategy D: Automotive Mechanical Query (Dynamic AI with Rule Fallback)
-        elif is_automotive(user_text):
-            client = get_gemini_client()
-            prior_messages = list(
-                session.messages.exclude(id=user_message_obj.id).values('sender', 'message')[:8]
-            )
-
-            # If Gemini is configured, provide dynamic, nuanced mechanic troubleshooting
-            if client:
-                reply_text = chat_with_gemini(prior_messages, user_text, vehicle_str)
-                is_ai = True
+        is_ai = True
+        
+        try:
+            if media_obj and media_obj.file:
+                reply_text = analyze_vehicle_media(
+                    media_obj.file.path,
+                    mimetypes.guess_type(media_obj.file.name)[0] or 'image/jpeg',
+                    user_text
+                )
+                media_obj.ai_analysis = reply_text
+                media_obj.save()
             else:
-                # If Gemini is offline/unconfigured, use deterministic decision tree
-                rule_followup = generate_rule_based_followup(user_text, {
-                    'vehicle': vehicle_str,
-                    'has_media': bool(media_obj)
-                })
-                if rule_followup and not prior_messages:
-                    reply_text = rule_followup
-                else:
-                    reply_text = (
-                        f"Understood. For {vehicle_str or 'your vehicle'}, this symptom usually points to mechanical "
-                        "wear or component fatigue in that specific system. "
-                        "Does this happen constantly or only under specific conditions (e.g. at highway speeds, over bumps, or when cold)? "
-                        "Click 'Generate Full Diagnostic Report (₹)' anytime to see estimated repair costs."
-                    )
-                is_ai = False
-        else:
-            # Ambiguous query - prompt user for car context (0 AI tokens)
-            reply_text = (
-                "Could you specify how this relates to your car's symptoms or maintenance? "
-                "I want to make sure I give you accurate mechanical advice."
+                prior_messages = list(
+                    session.messages.exclude(id=user_message_obj.id).values('sender', 'message')[:8]
+                )
+                reply_text = generate_chat_response(prior_messages, user_text, vehicle_str)
+        except GeminiException as e:
+            # Revert the user message so they can try again if there's an AI error
+            user_message_obj.delete()
+            return Response(
+                {"success": False, "error": str(e)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
-            is_ai = False
+        except Exception as e:
+            user_message_obj.delete()
+            return Response(
+                {"success": False, "error": "An unexpected error occurred while contacting AI."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-        # 6. Save Mechanic Message
+        # 5. Save Mechanic Message
         mechanic_message_obj = ChatMessage.objects.create(
             session=session,
             sender='mechanic',
@@ -180,22 +133,17 @@ class ChatView(APIView):
 
 
 class UploadView(APIView):
-    """
-    POST /api/upload/
-    Uploads image, audio, or video files.
-    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         file_obj = request.FILES.get('file')
         if not file_obj:
-            return Response({"error": "No file provided in request."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"success": False, "error": "No file provided in request."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # File size check: limit to 25MB
         max_size = 25 * 1024 * 1024
         if file_obj.size > max_size:
             return Response(
-                {"error": "File size exceeds 25MB limit. Please upload a smaller media file."},
+                {"success": False, "error": "File size exceeds 25MB limit. Please upload a smaller media file."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -205,9 +153,8 @@ class UploadView(APIView):
             try:
                 session = ChatSession.objects.get(id=session_id)
             except (ChatSession.DoesNotExist, ValueError):
-                session = None
+                pass
 
-        # Determine file type
         mime_type, _ = mimetypes.guess_type(file_obj.name)
         file_type = 'other'
         if mime_type:
@@ -216,14 +163,6 @@ class UploadView(APIView):
             elif mime_type.startswith('audio/'):
                 file_type = 'audio'
             elif mime_type.startswith('video/'):
-                file_type = 'video'
-        else:
-            ext = file_obj.name.lower().split('.')[-1]
-            if ext in ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp']:
-                file_type = 'image'
-            elif ext in ['mp3', 'wav', 'ogg', 'm4a', 'aac']:
-                file_type = 'audio'
-            elif ext in ['mp4', 'mov', 'avi', 'mkv', 'webm']:
                 file_type = 'video'
 
         media = UploadedMedia.objects.create(
@@ -242,166 +181,120 @@ class UploadView(APIView):
 
 
 class DiagnosisView(APIView):
-    """
-    POST /api/diagnosis/
-    Synthesizes diagnosis report with severity, causes, and recommended repairs.
-    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         session_id = request.data.get('session_id')
-        session = None
-        if session_id:
-            try:
-                session = ChatSession.objects.get(id=session_id)
-            except (ChatSession.DoesNotExist, ValueError):
-                session = None
-
-        if not session:
-            session = ChatSession.objects.create()
-
-        # Gather context
-        vehicle_str = f"{session.vehicle_year} {session.vehicle_make} {session.vehicle_model}".strip()
-        messages = list(session.messages.values('sender', 'message'))
-
-        # Check if symptoms were passed directly in payload
         symptoms = request.data.get('symptoms', [])
-        if isinstance(symptoms, str):
-            symptoms = [symptoms]
-
-        if not messages and not symptoms:
+        
+        if not session_id:
             return Response(
-                {"error": "Please provide symptoms or have a conversation with the mechanic first."},
+                {"success": False, "error": "session_id is required."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Synthesize diagnosis
-        report = synthesize_diagnosis(vehicle_str, symptoms, messages)
+        try:
+            session = ChatSession.objects.get(id=session_id)
+        except (ChatSession.DoesNotExist, ValueError):
+            return Response({"success": False, "error": "Invalid session_id."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Save to database
-        diagnosis_obj = Diagnosis.objects.create(
+        vehicle_info = f"{session.vehicle_year} {session.vehicle_make} {session.vehicle_model}".strip()
+        messages = session.messages.order_by('created_at')
+        chat_history = "\n".join([f"{m.sender}: {m.message}" for m in messages[-10:]])
+        
+        if symptoms:
+            chat_history += f"\nAdditional Symptoms Provided: {', '.join(symptoms)}"
+
+        try:
+            diagnosis_data = generate_diagnosis(vehicle_info, chat_history)
+        except GeminiException as e:
+            return Response(
+                {"success": False, "error": str(e)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except Exception as e:
+            return Response(
+                {"success": False, "error": "An unexpected error occurred while generating diagnosis."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        diag_obj = Diagnosis.objects.create(
             session=session,
-            issue_title=report.get('issue_title', 'Vehicle Mechanical Diagnostic'),
-            summary=report.get('summary', ''),
-            severity=report.get('severity', 'MEDIUM'),
-            probable_causes=report.get('probable_causes', []),
-            recommended_services=report.get('recommended_services', []),
-            safety_warning=report.get('safety_warning', ''),
-            estimated_cost_range=report.get('estimated_cost_range', ''),
-            ai_generated=bool(getattr(settings, 'GEMINI_API_KEY', ''))
+            issue_title=diagnosis_data.get('issue_title', 'Unknown Issue'),
+            summary=diagnosis_data.get('summary', ''),
+            severity=diagnosis_data.get('severity', 'MEDIUM'),
+            probable_causes=diagnosis_data.get('probable_causes', []),
+            recommended_services=diagnosis_data.get('recommended_services', []),
+            safety_warning=diagnosis_data.get('safety_warning', ''),
+            estimated_cost_range=diagnosis_data.get('estimated_cost_range', ''),
+            ai_generated=True
         )
 
-        serializer = DiagnosisSerializer(diagnosis_obj)
+        serializer = DiagnosisSerializer(diag_obj)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class BookingView(APIView):
-    """
-    POST /api/booking/  - Create a new mechanic booking
-    GET /api/booking/   - List recent bookings
-    """
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         session_id = request.query_params.get('session_id')
+        bookings = Booking.objects.all()
         if session_id:
-            bookings = Booking.objects.filter(session_id=session_id)
-        else:
-            bookings = Booking.objects.all()[:20]
-        serializer = BookingSerializer(bookings, many=True, context={'request': request})
-        return Response(serializer.data, status=status.HTTP_200_OK)
+            bookings = bookings.filter(session__id=session_id)
+        
+        serializer = BookingSerializer(bookings, many=True)
+        return Response(serializer.data)
 
     def post(self, request):
-        data = request.data.copy()
-
-        # Require fundamental customer info
-        required_fields = ['customer_name', 'customer_phone', 'preferred_date']
-        missing = [f for f in required_fields if not data.get(f)]
-        if missing:
-            return Response(
-                {"error": f"Missing required fields: {', '.join(missing)}"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Fallbacks for optional fields
-        if not data.get('vehicle_info'):
-            session_id = data.get('session')
-            if session_id:
-                try:
-                    s = ChatSession.objects.get(id=session_id)
-                    data['vehicle_info'] = f"{s.vehicle_year} {s.vehicle_make} {s.vehicle_model}".strip() or "Vehicle inspection"
-                except Exception:
-                    data['vehicle_info'] = "General vehicle inspection"
-            else:
-                data['vehicle_info'] = "General vehicle inspection"
-
-        if not data.get('service_requested'):
-            data['service_requested'] = "Comprehensive Diagnostic & Repair Service"
-
-        if not data.get('preferred_time_slot'):
-            data['preferred_time_slot'] = "10:00 AM - 12:00 PM"
-
-        if not data.get('customer_email'):
-            data['customer_email'] = "customer@example.com"
-
-        booking_code = generate_booking_code()
-        while Booking.objects.filter(booking_code=booking_code).exists():
-            booking_code = generate_booking_code()
-
-        serializer = BookingSerializer(data=data, context={'request': request})
+        serializer = BookingSerializer(data=request.data)
         if serializer.is_valid():
-            booking = serializer.save(booking_code=booking_code)
-            return Response(
-                BookingSerializer(booking, context={'request': request}).data,
-                status=status.HTTP_201_CREATED
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            booking = serializer.save(booking_code=generate_booking_code())
+            return Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
+        
+        # Format DRF validation errors for frontend expecting {"error": "..."}
+        errors = serializer.errors
+        error_msg = "; ".join([f"{k}: {v[0] if isinstance(v, list) else v}" for k, v in errors.items()])
+        return Response(
+            {"success": False, "error": error_msg},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 
 class BookingDetailView(APIView):
-    """
-    GET /api/booking/{id}/
-    Retrieve booking by UUID or booking_code.
-    """
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, pk):
-        booking = None
-        # Check if pk is a booking_code or UUID
-        if pk.startswith('BK-'):
-            booking = get_object_or_404(Booking, booking_code=pk)
-        else:
+        try:
+            booking = Booking.objects.get(id=pk)
+        except (Booking.DoesNotExist, ValueError):
             try:
-                booking = get_object_or_404(Booking, id=pk)
-            except Exception:
-                booking = get_object_or_404(Booking, booking_code=pk)
-
-        serializer = BookingSerializer(booking, context={'request': request})
-        return Response(serializer.data, status=status.HTTP_200_OK)
+                booking = Booking.objects.get(booking_code=pk)
+            except Booking.DoesNotExist:
+                return Response({"success": False, "error": "Booking not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        return Response(BookingSerializer(booking).data)
 
 
 class SessionHistoryView(APIView):
-    """
-    GET /api/history/{session_id}/
-    Retrieves entire session context: messages, uploads, diagnoses.
-    """
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, session_id):
         session = get_object_or_404(ChatSession, id=session_id)
         serializer = ChatSessionSerializer(session, context={'request': request})
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.data)
 
     def patch(self, request, session_id):
         session = get_object_or_404(ChatSession, id=session_id)
         if 'vehicle_make' in request.data:
-            session.vehicle_make = request.data.get('vehicle_make', '')
+            session.vehicle_make = request.data['vehicle_make']
         if 'vehicle_model' in request.data:
-            session.vehicle_model = request.data.get('vehicle_model', '')
+            session.vehicle_model = request.data['vehicle_model']
         if 'vehicle_year' in request.data:
-            session.vehicle_year = request.data.get('vehicle_year', '')
+            session.vehicle_year = request.data['vehicle_year']
         if 'vehicle_mileage' in request.data:
-            session.vehicle_mileage = request.data.get('vehicle_mileage', '')
+            session.vehicle_mileage = request.data['vehicle_mileage']
+        
         session.save()
         serializer = ChatSessionSerializer(session, context={'request': request})
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.data)
