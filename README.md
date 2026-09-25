@@ -23,7 +23,7 @@ Built with a **hybrid architecture** that combines deterministic automotive rule
 | :--- | :--- | :--- |
 | **Production Frontend** | Vercel | [https://car-mechanic-vexy1.vercel.app/](https://car-mechanic-vexy1.vercel.app/) |
 | **Production API Gateway** | AWS EC2 + Cloudflare Tunnel | [https://car-mechanic.riggedved.dev](https://car-mechanic.riggedved.dev) |
-| **API Health Check** | Root Endpoint | [https://car-mechanic.riggedved.dev/](https://car-mechanic.riggedved.dev/) |
+| **API Health Check** | Root Endpoint | [[https://car-mechanic.riggedved.dev/](http://3.110.196.184)](http://3.110.196.184) |
 
 ---
 
