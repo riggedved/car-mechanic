@@ -32,21 +32,6 @@ services:
       backend:
         condition: service_healthy
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost}
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    depends_on:
-      backend:
-        condition: service_healthy
-    profiles:
-      - full
-
 volumes:
   sqlite_volume:
     name: car_mechanic_sqlite_data
