@@ -8,7 +8,7 @@ from django.http import JsonResponse
 def root_health_check(request):
     return JsonResponse({
         "status": "online",
-        "service": "Torque AI Car Mechanic Diagnostic API",
+        "service": "Apex Car Mechanic AI Diagnostic API",
         "version": "1.0.0",
         "endpoints": {
           "chat": "/api/chat/",
