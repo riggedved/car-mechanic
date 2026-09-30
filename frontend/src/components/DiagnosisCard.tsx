@@ -1,61 +1,88 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AlertCircle, CheckCircle2, ShieldAlert, Calendar, Printer, Share2, Wrench, Check } from 'lucide-react';
 import { Diagnosis } from '@/lib/api';
 
 interface DiagnosisCardProps {
   diagnosis: Diagnosis;
+  vehicleSummary?: string;
   onBookClick: (diagnosis: Diagnosis) => void;
 }
 
-export default function DiagnosisCard({ diagnosis, onBookClick }: DiagnosisCardProps) {
+export default function DiagnosisCard({
+  diagnosis,
+  vehicleSummary,
+  onBookClick,
+}: DiagnosisCardProps) {
   const [copied, setCopied] = useState(false);
 
-  const getSeverityInfo = (sev: string) => {
-    switch (sev) {
+  const getSeverityData = (sev: string) => {
+    switch (sev?.toUpperCase()) {
       case 'CRITICAL':
         return {
-          badge: <span className="badge badge-critical"><ShieldAlert size={13} /> Critical Severity</span>,
-          urgencyScore: 95,
-          color: '#f43f5e',
-          accentBg: 'rgba(244, 63, 94, 0.15)',
-          barBg: 'linear-gradient(90deg, #3b82f6, #f43f5e)'
+          label: 'CRITICAL FAULT (95% URGENCY)',
+          urgencyPercent: 95,
+          color: 'var(--severity-critical)',
+          bgTint: 'rgba(239, 68, 68, 0.12)',
+          borderColor: 'rgba(239, 68, 68, 0.35)',
+          intervention: 'Immediate Intervention Required',
         };
       case 'HIGH':
         return {
-          badge: <span className="badge badge-high"><AlertCircle size={13} /> High Priority</span>,
-          urgencyScore: 78,
-          color: '#818cf8',
-          accentBg: 'rgba(99, 102, 241, 0.15)',
-          barBg: 'linear-gradient(90deg, #3b82f6, #818cf8)'
+          label: 'HIGH PRIORITY (78% URGENCY)',
+          urgencyPercent: 78,
+          color: 'var(--severity-high)',
+          bgTint: 'rgba(245, 158, 11, 0.12)',
+          borderColor: 'rgba(245, 158, 11, 0.35)',
+          intervention: 'Prompt Rectification Advised',
         };
       case 'MEDIUM':
         return {
-          badge: <span className="badge badge-medium"><AlertCircle size={13} /> Medium Attention</span>,
-          urgencyScore: 50,
-          color: 'var(--accent-cyan)',
-          accentBg: 'rgba(14, 165, 233, 0.15)',
-          barBg: 'linear-gradient(90deg, #1d4ed8, #0ea5e9)'
+          label: 'MEDIUM ATTENTION (50% URGENCY)',
+          urgencyPercent: 50,
+          color: 'var(--severity-medium)',
+          bgTint: 'rgba(234, 179, 8, 0.12)',
+          borderColor: 'rgba(234, 179, 8, 0.35)',
+          intervention: 'Scheduled Service Recommended',
         };
       default:
         return {
-          badge: <span className="badge badge-low"><CheckCircle2 size={13} /> Low Risk</span>,
-          urgencyScore: 25,
-          color: 'var(--status-low)',
-          accentBg: 'rgba(16, 185, 129, 0.12)',
-          barBg: 'linear-gradient(90deg, #0284c7, #10b981)'
+          label: 'LOW RISK (25% URGENCY)',
+          urgencyPercent: 25,
+          color: 'var(--severity-low)',
+          bgTint: 'rgba(16, 185, 129, 0.12)',
+          borderColor: 'rgba(16, 185, 129, 0.35)',
+          intervention: 'Nominal Operating Parameters',
         };
     }
   };
 
-  const sevInfo = getSeverityInfo(diagnosis.severity);
+  const sev = getSeverityData(diagnosis.severity);
+  const reportCode = diagnosis.id ? `#DX-${diagnosis.id.replace(/-/g, '').slice(0, 5).toUpperCase()}` : '#DX-99042';
 
-  const handleShare = () => {
-    const text = `Apex Diagnosis Report: ${diagnosis.issue_title}\nSeverity: ${diagnosis.severity}\nEstimated Cost: ${diagnosis.estimated_cost_range}\n${diagnosis.summary}`;
+  const handleCopy = () => {
+    const servicesText = diagnosis.recommended_services
+      ? diagnosis.recommended_services.map(s => ` - ${s.name}: ${s.estimated_cost} (${s.urgency})`).join('\n')
+      : '';
+    const causesText = diagnosis.probable_causes
+      ? diagnosis.probable_causes.map((c, i) => ` 0${i + 1}. ${c}`).join('\n')
+      : '';
+
+    const text = [
+      `TORQUE DVI REPORT ${reportCode}`,
+      `Issue: ${diagnosis.issue_title}`,
+      `Severity: ${diagnosis.severity} (${sev.urgencyPercent}% Urgency)`,
+      `Vehicle: ${vehicleSummary || 'Active Vehicle'}`,
+      `Estimated Cost: ${diagnosis.estimated_cost_range || 'N/A'}`,
+      `\nSummary:\n${diagnosis.summary}`,
+      causesText ? `\nProbable Causes:\n${causesText}` : '',
+      servicesText ? `\nRecommended Services:\n${servicesText}` : '',
+      diagnosis.safety_warning ? `\nSAFETY ADVISORY:\n${diagnosis.safety_warning}` : '',
+    ].filter(Boolean).join('\n');
+
     navigator.clipboard.writeText(text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handlePrint = () => {
@@ -63,288 +90,497 @@ export default function DiagnosisCard({ diagnosis, onBookClick }: DiagnosisCardP
   };
 
   return (
-    <div style={{
-      background: 'rgba(12, 21, 39, 0.88)',
-      border: '1px solid rgba(59, 130, 246, 0.35)',
-      borderRadius: 'var(--radius-lg)',
-      padding: '1.4rem',
-      marginTop: '1.25rem',
-      boxShadow: '0 16px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(37, 99, 235, 0.15)',
-      position: 'relative',
-      overflow: 'hidden',
-      backdropFilter: 'blur(16px)',
-      WebkitBackdropFilter: 'blur(16px)'
-    }}>
-      {/* Top Cyber Stripe */}
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 3,
-        background: sevInfo.barBg
-      }} />
+    <section
+      id="dvi-report-section"
+      style={{
+        background: '#111827',
+        border: '1px solid #1E293B',
+        borderRadius: 'var(--radius-xl)',
+        padding: '1.25rem 1.5rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1.25rem',
+        boxShadow: '0 12px 32px -4px rgba(0, 0, 0, 0.7)',
+        animation: 'fadeIn 0.3s ease-out',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Top Anodized Line */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 2,
+          background: `linear-gradient(90deg, #ff6b00, ${sev.color})`,
+        }}
+      />
 
-      {/* Header Bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.9rem' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
-            <span style={{ fontSize: '0.72rem', color: 'var(--accent-cyan)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
-              Master Diagnostic Inspection Report
+      {/* Header Info */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.75rem',
+          paddingBottom: '0.85rem',
+          borderBottom: '1px solid #1E293B',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10,
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: 'var(--radius-sm)',
+                background: 'rgba(255, 107, 0, 0.15)',
+                color: '#ff6b00',
+                border: '1px solid rgba(255, 107, 0, 0.3)',
+                letterSpacing: '0.06em',
+              }}
+            >
+              {reportCode}
             </span>
-            <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(59, 130, 246, 0.2)', color: '#93c5fd', border: '1px solid rgba(59, 130, 246, 0.4)' }}>
-              ASE Verified
-            </span>
+            {vehicleSummary && (
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  color: '#94a3b8',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {vehicleSummary}
+              </span>
+            )}
           </div>
-          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.01em' }}>
+          <h2
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '1.25rem',
+              fontWeight: 700,
+              color: '#dfe2ee',
+              letterSpacing: '-0.02em',
+              marginTop: '0.35rem',
+            }}
+          >
+            {diagnosis.issue_title || 'Digital Vehicle Inspection & Estimate'}
+          </h2>
+        </div>
+
+        {/* Severity Badge */}
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            padding: '0.35rem 0.85rem',
+            borderRadius: 'var(--radius-full)',
+            background: sev.bgTint,
+            border: `1px solid ${sev.borderColor}`,
+            color: sev.color,
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              backgroundColor: sev.color,
+              boxShadow: `0 0 8px ${sev.color}`,
+              display: 'inline-block',
+            }}
+          />
+          <span>{sev.label}</span>
+        </div>
+      </div>
+
+      {/* Urgency Progress Bar */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+          }}
+        >
+          <span style={{ color: '#dfe2ee', fontWeight: 600 }}>
             {diagnosis.issue_title}
-          </h3>
+          </span>
+          <span style={{ color: sev.color, fontWeight: 700 }}>
+            {sev.intervention}
+          </span>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {sevInfo.badge}
-
-          <button
-            onClick={handleShare}
+        <div
+          style={{
+            width: '100%',
+            height: 6,
+            background: '#1c2028',
+            borderRadius: 9999,
+            overflow: 'hidden',
+          }}
+        >
+          <div
             style={{
-              padding: '0.35rem 0.65rem',
-              borderRadius: 'var(--radius-sm)',
-              background: 'rgba(30, 41, 59, 0.6)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-muted)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-              fontSize: '0.75rem'
+              height: '100%',
+              width: `${sev.urgencyPercent}%`,
+              background: `linear-gradient(90deg, #ff6b00, ${sev.color})`,
+              borderRadius: 9999,
+              transition: 'width 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
             }}
-            title="Copy Report to Clipboard"
-          >
-            {copied ? <Check size={14} color="var(--accent-cyan)" /> : <Share2 size={14} />}
-            <span>{copied ? 'Copied!' : 'Share'}</span>
-          </button>
-
-          <button
-            onClick={handlePrint}
-            style={{
-              padding: '0.35rem 0.65rem',
-              borderRadius: 'var(--radius-sm)',
-              background: 'rgba(30, 41, 59, 0.6)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-muted)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-              fontSize: '0.75rem'
-            }}
-            title="Print or Save PDF"
-          >
-            <Printer size={14} />
-            <span>Print</span>
-          </button>
+          />
         </div>
       </div>
 
-      {/* Urgency Health Gauge Meter */}
-      <div style={{
-        background: 'rgba(10, 17, 34, 0.7)',
-        border: '1px solid rgba(59, 130, 246, 0.15)',
-        borderRadius: 'var(--radius-md)',
-        padding: '0.75rem 1rem',
-        marginBottom: '1rem',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-            Mechanical Urgency Index
-          </span>
-          <span style={{ fontSize: '0.82rem', fontWeight: 800, color: sevInfo.color }}>
-            {sevInfo.urgencyScore}% / 100
-          </span>
-        </div>
-        <div style={{ height: 6, background: '#1e293b', borderRadius: 999, overflow: 'hidden' }}>
-          <div style={{
-            height: '100%',
-            width: `${sevInfo.urgencyScore}%`,
-            background: sevInfo.barBg,
-            borderRadius: 999,
-            transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1)'
-          }} />
-        </div>
-      </div>
+      {/* Summary Narrative */}
+      {diagnosis.summary && (
+        <p
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontSize: 14,
+            lineHeight: '22px',
+            color: '#cbd5e1',
+          }}
+        >
+          {diagnosis.summary}
+        </p>
+      )}
 
-      {/* Summary */}
-      <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '1.15rem' }}>
-        {diagnosis.summary}
-      </p>
-
-      {/* Probable Causes Checklist */}
+      {/* Probable Causes Grid */}
       {diagnosis.probable_causes && diagnosis.probable_causes.length > 0 && (
-        <div style={{ marginBottom: '1.25rem' }}>
-          <h4 style={{ fontSize: '0.78rem', color: 'var(--accent-blue-light)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem', fontWeight: 700 }}>
-            Root Cause Analysis
-          </h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingTop: '0.25rem' }}>
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              color: '#94a3b8',
+              textTransform: 'uppercase',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+            }}
+          >
+            Identified Root Causes
+          </span>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '0.65rem',
+            }}
+          >
             {diagnosis.probable_causes.map((cause, idx) => (
               <div
                 key={idx}
                 style={{
+                  background: '#1c2028',
+                  border: '1px solid #1E293B',
+                  borderRadius: 'var(--radius-lg)',
+                  padding: '0.85rem 1rem',
                   display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '0.6rem',
-                  fontSize: '0.86rem',
-                  color: '#e2e8f0',
-                  background: 'rgba(15, 23, 42, 0.5)',
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid rgba(59, 130, 246, 0.12)'
+                  flexDirection: 'column',
+                  gap: '0.35rem',
                 }}
               >
-                <div style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: 4,
-                  background: 'rgba(59, 130, 246, 0.2)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--accent-cyan)',
-                  fontSize: '0.7rem',
-                  fontWeight: 800,
-                  marginTop: 2
-                }}>
-                  {idx + 1}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: '#ff6b00',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    0{idx + 1} // CAUSE
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: sev.color,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {idx === 0 ? 'PRIMARY' : 'SECONDARY'}
+                  </span>
                 </div>
-                <span>{cause}</span>
+                <p
+                  style={{
+                    fontFamily: 'var(--font-sans)',
+                    fontSize: 13,
+                    lineHeight: '18px',
+                    color: '#dfe2ee',
+                  }}
+                >
+                  {cause}
+                </p>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Recommended Services Table & Estimates (INR ₹) */}
+      {/* Recommended Rectification Schedule */}
       {diagnosis.recommended_services && diagnosis.recommended_services.length > 0 && (
-        <div style={{ marginBottom: '1.25rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-            <h4 style={{ fontSize: '0.78rem', color: 'var(--accent-cyan)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
-              Recommended Workshop Services (INR ₹)
-            </h4>
-            <span style={{ fontSize: '0.72rem', color: 'var(--status-low)', fontWeight: 600 }}>
-              Save ~35% vs OEM Dealerships
-            </span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {diagnosis.recommended_services.map((srv, idx) => (
-              <div
-                key={idx}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  background: 'rgba(10, 17, 34, 0.7)',
-                  padding: '0.75rem 1rem',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid rgba(59, 130, 246, 0.2)',
-                  fontSize: '0.88rem'
-                }}
-              >
-                <div>
-                  <span style={{ fontWeight: 600, color: '#fff' }}>{srv.name}</span>
-                  {srv.urgency && (
-                    <span style={{
-                      marginLeft: '0.6rem',
-                      fontSize: '0.72rem',
-                      color: srv.urgency.toLowerCase().includes('immediate') ? '#f43f5e' : 'var(--accent-blue-light)',
-                      fontWeight: 600
-                    }}>
-                      • {srv.urgency}
-                    </span>
-                  )}
-                </div>
-                <span style={{
-                  fontWeight: 800,
-                  color: 'var(--accent-cyan)',
-                  fontSize: '0.95rem',
-                  fontFamily: 'var(--font-mono)'
-                }}>
-                  {srv.estimated_cost}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Safety Warning Box */}
-      {diagnosis.safety_warning && (
-        <div style={{
-          background: 'rgba(244, 63, 94, 0.08)',
-          borderLeft: '4px solid #f43f5e',
-          padding: '0.85rem 1rem',
-          borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
-          marginBottom: '1.25rem',
-          fontSize: '0.85rem',
-          color: '#fda4af',
-          lineHeight: 1.5,
-          border: '1px solid rgba(244, 63, 94, 0.2)',
-          borderLeftWidth: 4
-        }}>
-          <strong>Safety Advisory:</strong> {diagnosis.safety_warning}
-        </div>
-      )}
-
-      {/* Footer & "Book Certified Mechanic" CTA */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '0.75rem',
-        paddingTop: '0.85rem',
-        borderTop: '1px solid rgba(59, 130, 246, 0.2)'
-      }}>
-        {diagnosis.estimated_cost_range && (
-          <div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Estimated Total:</span>
-            <strong style={{
-              color: '#fff',
-              fontSize: '1.2rem',
-              fontWeight: 800,
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingTop: '0.4rem' }}>
+          <span
+            style={{
               fontFamily: 'var(--font-mono)',
-              textShadow: '0 0 10px rgba(59, 130, 246, 0.4)'
-            }}>
-              {diagnosis.estimated_cost_range}
-            </strong>
+              fontSize: 10,
+              color: '#94a3b8',
+              textTransform: 'uppercase',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+            }}
+          >
+            Recommended Rectification Schedule
+          </span>
+          <div
+            style={{
+              overflowX: 'auto',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px solid #1E293B',
+            }}
+          >
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                textAlign: 'left',
+                fontSize: 13,
+              }}
+            >
+              <thead>
+                <tr
+                  style={{
+                    background: '#1c2028',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    color: '#94a3b8',
+                    borderBottom: '1px solid #1E293B',
+                  }}
+                >
+                  <th style={{ padding: '0.65rem 1rem' }}>Service Item</th>
+                  <th style={{ padding: '0.65rem 1rem' }}>Urgency</th>
+                  <th style={{ padding: '0.65rem 1rem', textAlign: 'right' }}>Cost (INR)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {diagnosis.recommended_services.map((srv, idx) => {
+                  const isImmediate = srv.urgency?.toLowerCase().includes('immediate') || srv.urgency?.toLowerCase().includes('critical');
+                  return (
+                    <tr
+                      key={idx}
+                      style={{
+                        borderBottom: '1px solid #1E293B',
+                        background: idx % 2 === 0 ? 'transparent' : 'rgba(255, 255, 255, 0.015)',
+                      }}
+                    >
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        <div style={{ fontWeight: 600, color: '#dfe2ee' }}>{srv.name}</div>
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: 'var(--radius-sm)',
+                            background: isImmediate ? 'rgba(239, 68, 68, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                            color: isImmediate ? 'var(--severity-critical)' : 'var(--telemetry-amber)',
+                            border: `1px solid ${isImmediate ? 'rgba(239, 68, 68, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                          }}
+                        >
+                          {srv.urgency || 'SCHEDULED'}
+                        </span>
+                      </td>
+                      <td
+                        style={{
+                          padding: '0.75rem 1rem',
+                          textAlign: 'right',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: '#dfe2ee',
+                        }}
+                      >
+                        {srv.estimated_cost}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        )}
+        </div>
+      )}
 
-        <button
-          onClick={() => onBookClick(diagnosis)}
+      {/* Safety Warning */}
+      {diagnosis.safety_warning && (
+        <div
           style={{
-            display: 'inline-flex',
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.28)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '0.75rem 1rem',
+            display: 'flex',
             alignItems: 'center',
-            gap: '0.6rem',
-            padding: '0.8rem 1.6rem',
-            background: 'linear-gradient(135deg, #2563eb 0%, #0284c7 100%)',
-            color: '#fff',
-            fontWeight: 800,
-            fontSize: '0.92rem',
-            borderRadius: 'var(--radius-md)',
-            boxShadow: '0 0 25px rgba(37, 99, 235, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
-            transition: 'all 0.2s',
-            marginLeft: 'auto'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 0 35px rgba(37, 99, 235, 0.75)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 0 25px rgba(37, 99, 235, 0.5)';
+            gap: '0.75rem',
+            color: '#ffb4ab',
+            fontSize: 12,
+            lineHeight: '18px',
           }}
         >
-          <Calendar size={18} strokeWidth={2.4} />
-          <span>Book Certified Mechanic</span>
-        </button>
+          <span
+            className="material-symbols-outlined"
+            style={{ fontSize: 20, color: '#ef4444', flexShrink: 0 }}
+          >
+            warning
+          </span>
+          <span>
+            <strong style={{ color: '#ef4444' }}>SAFETY WARNING: </strong>
+            {diagnosis.safety_warning}
+          </span>
+        </div>
+      )}
+
+      {/* Price Summary & Action Controls */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          paddingTop: '0.75rem',
+          borderTop: '1px solid #1E293B',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+              color: '#94a3b8',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+            }}
+          >
+            Estimated Total Repair Cost
+          </span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '1.5rem',
+                fontWeight: 700,
+                color: '#ff6b00',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              {diagnosis.estimated_cost_range || '₹0'}
+            </span>
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+              Taxes & Labor included
+            </span>
+          </div>
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={handlePrint}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              padding: '0.5rem 0.85rem',
+              borderRadius: 'var(--radius-lg)',
+              background: '#1c2028',
+              border: '1px solid #1E293B',
+              color: '#dfe2ee',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              fontWeight: 600,
+            }}
+            title="Print Inspection Report"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+              print
+            </span>
+            <span>Print</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleCopy}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              padding: '0.5rem 0.85rem',
+              borderRadius: 'var(--radius-lg)',
+              background: '#1c2028',
+              border: '1px solid #1E293B',
+              color: copied ? '#4cd7f6' : '#dfe2ee',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              fontWeight: 600,
+            }}
+            title="Copy Report to Clipboard"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+              {copied ? 'check' : 'content_copy'}
+            </span>
+            <span>{copied ? 'Copied' : 'Copy'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onBookClick(diagnosis)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.6rem 1.25rem',
+              borderRadius: 'var(--radius-lg)',
+              background: '#ff6b00',
+              color: '#fff',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              boxShadow: '0 0 16px rgba(255, 107, 0, 0.45)',
+            }}
+            title="Reserve Repair Bay with Certified Mechanic"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
+              car_repair
+            </span>
+            <span>Book Certified Mechanic</span>
+          </button>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }

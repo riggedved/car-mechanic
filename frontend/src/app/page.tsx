@@ -6,6 +6,7 @@ import MediaUploader from '@/components/MediaUploader';
 import DiagnosisCard from '@/components/DiagnosisCard';
 import BookingModal from '@/components/BookingModal';
 import HistoryDrawer from '@/components/HistoryDrawer';
+import FormattedMessage from '@/components/FormattedMessage';
 import {
   ChatMessage,
   UploadedMedia,
@@ -15,36 +16,50 @@ import {
   sendChatMessage,
   requestDiagnosis
 } from '@/lib/api';
-import {
-  Send,
-  ShieldCheck,
-  Sparkles,
-  FileText,
-  Volume2,
-  CheckCircle,
-  Activity,
-  Layers,
-  HelpCircle,
-  Disc,
-  Zap,
-  Thermometer,
-  Wind
-} from 'lucide-react';
 
 const COMMON_OBD_CODES = [
   { code: 'P0300', title: 'Random / Multiple Cylinder Misfire', desc: 'Fouled spark plugs, bad ignition coils, or vacuum leak.' },
-  { code: 'P0420', title: 'Catalytic Converter System Efficiency Below Threshold', desc: 'Exhaust leak, O2 sensor failure, or worn cat substrate.' },
+  { code: 'P0420', title: 'Catalytic Converter System Efficiency Below Threshold', desc: 'Exhaust leak, O2 sensor failure, or worn catalytic substrate.' },
   { code: 'P0171', title: 'System Too Lean (Bank 1)', desc: 'Dirty MAF sensor, vacuum leak, or weak fuel pump.' },
   { code: 'P0442', title: 'EVAP System Small Leak Detected', desc: 'Loose or cracked fuel filler cap or purge valve stick.' },
   { code: 'P0115', title: 'Engine Coolant Temperature Sensor Malfunction', desc: 'Faulty ECT sensor or thermostat stuck open.' },
   { code: 'P0500', title: 'Vehicle Speed Sensor (VSS) Malfunction', desc: 'Speedometer erratic or ABS wheel speed sensor failure.' }
 ];
 
-const CATEGORY_CHIPS = [
-  { label: 'Brakes & Rotors', icon: Disc, query: 'My front brakes are squealing and grinding when I stop' },
-  { label: 'Engine & Starter', icon: Zap, query: 'Engine won\'t start, rapid clicking when turning key' },
-  { label: 'Cooling & Steam', icon: Thermometer, query: 'Temperature gauge is in the red and white steam from bonnet' },
-  { label: 'AC & Climate', icon: Wind, query: 'AC is blowing warm ambient air instead of chilled air at idle' },
+const QUICK_STARTERS = [
+  {
+    title: 'Brakes & Rotors',
+    sub: 'Squeal & shudder',
+    icon: 'disc_full',
+    color: '#ff6b00',
+    query: 'My front brakes are squealing and grinding when I stop'
+  },
+  {
+    title: 'Engine & Starter',
+    sub: 'No-crank click',
+    icon: 'power',
+    color: '#06B6D4',
+    query: "Engine won't start, rapid clicking when turning key"
+  },
+  {
+    title: 'Cooling & Steam',
+    sub: 'High temp redline',
+    icon: 'thermostat',
+    color: '#F59E0B',
+    query: 'Temperature gauge is in the red and white steam from bonnet'
+  },
+  {
+    title: 'AC & Climate',
+    sub: 'Warm air at idle',
+    icon: 'mode_fan',
+    color: '#4cd7f6',
+    query: 'AC is blowing warm ambient air instead of chilled air at idle'
+  },
+];
+
+const FLEET_MAKES = [
+  'Tata', 'Mahindra', 'Maruti Suzuki', 'Hyundai', 'Honda', 
+  'Toyota', 'Kia', 'Volkswagen', 'Skoda', 'BMW', 'Mercedes-Benz'
 ];
 
 export default function Home() {
@@ -59,16 +74,24 @@ export default function Home() {
 
   const [isSending, setIsSending] = useState(false);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
 
   // Modals & Drawers
   const [bookingDiagnosis, setBookingDiagnosis] = useState<Diagnosis | null>(null);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isObdModalOpen, setIsObdModalOpen] = useState(false);
-  const [showReport, setShowReport] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Format timestamp helper
+  const formatTime = (isoString?: string) => {
+    try {
+      const d = isoString ? new Date(isoString) : new Date();
+      return `${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })} IST`;
+    } catch {
+      return '16:40 IST';
+    }
+  };
 
   // Initialize session or set default welcome message
   useEffect(() => {
@@ -77,29 +100,31 @@ export default function Home() {
       setSessionId(savedSession);
     }
 
+    const savedVehicle = localStorage.getItem('mechanic_vehicle');
+    if (savedVehicle) {
+      try {
+        setVehicle(JSON.parse(savedVehicle));
+      } catch {}
+    }
+
     setMessages([
       {
         id: 'welcome-msg',
         session: savedSession || '',
         sender: 'mechanic',
         message:
-          "Hello! I'm Mac, your senior automotive diagnostic technician. What vehicle can I help you inspect today?\n\n" +
-          "Describe any mechanical trouble—brake grinding, coolant leaks, starter clicking, or warning codes. " +
-          "You can also attach inspection photos, record live engine sounds with your microphone, or upload a video clip.",
+          "Welcome to TORQUE AI. I'm Mac, your Senior Master Automotive Diagnostic Technician.\n\n" +
+          "What vehicle trouble can I troubleshoot with you today? Describe any symptom—brake grinding, coolant leaks, starter clicking, or dashboard fault codes. " +
+          "You can also attach inspection photos, record live engine sounds via microphone, or upload video clips.",
         is_ai_generated: false,
         created_at: new Date().toISOString(),
       },
     ]);
   }, []);
 
-  // Voice speech synthesis
-  const speakText = (text: string) => {
-    if (!voiceEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const cleanText = text.replace(/[*_#•⚠️🚨💡]/g, '').slice(0, 250);
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.rate = 1.05;
-    window.speechSynthesis.speak(utterance);
+  const handleUpdateVehicle = (newVehicle: VehicleInfo) => {
+    setVehicle(newVehicle);
+    localStorage.setItem('mechanic_vehicle', JSON.stringify(newVehicle));
   };
 
   // Auto scroll to bottom
@@ -120,7 +145,7 @@ export default function Home() {
       id: `temp-${Date.now()}`,
       session: sessionId || '',
       sender: 'user',
-      message: textToSend || `[Attached ${currentMedia?.file_type}]`,
+      message: textToSend || `[Attached ${currentMedia?.file_type} for inspection]`,
       media_detail: currentMedia || undefined,
       is_ai_generated: false,
       created_at: new Date().toISOString(),
@@ -151,7 +176,6 @@ export default function Home() {
       }
 
       setMessages((prev) => [...prev, response.mechanic_message]);
-      speakText(response.mechanic_message.message);
     } catch (err: any) {
       setMessages((prev) => [
         ...prev,
@@ -180,18 +204,21 @@ export default function Home() {
       const activeSession = sessionId || 'new-session';
       const diagnosis = await requestDiagnosis(activeSession);
       setDiagnoses((prev) => [diagnosis, ...prev]);
-      setShowReport(true);
 
       const diagNoticeMsg: ChatMessage = {
         id: `diag-notice-${Date.now()}`,
         session: activeSession,
         sender: 'mechanic',
-        message: `📋 I've compiled an official diagnostic report for your vehicle below with estimated repair costs in INR (₹). Review the findings and click 'Book Certified Mechanic' to schedule a prioritized workshop bay inspection.`,
+        message: `📋 Digital Vehicle Inspection Report #${diagnosis.id.slice(0, 6)} generated with repair estimates in INR (₹). Review the findings below and click 'Book Certified Mechanic' to schedule a prioritized workshop bay inspection.`,
         is_ai_generated: diagnosis.ai_generated,
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, diagNoticeMsg]);
-      speakText("Diagnosis report generated with repair estimates in Indian Rupees.");
+
+      setTimeout(() => {
+        const reportElem = document.getElementById('dvi-report-section');
+        reportElem?.scrollIntoView({ behavior: 'smooth' });
+      }, 200);
     } catch (err: any) {
       setMessages((prev) => [
         ...prev,
@@ -199,7 +226,7 @@ export default function Home() {
           id: `notice-${Date.now()}`,
           session: sessionId || '',
           sender: 'mechanic',
-          message: `ℹ️ ${err.message || 'Please describe what symptoms or trouble your vehicle is experiencing before generating a repair diagnostic report.'}`,
+          message: `ℹ️ ${err.message || 'Please describe what symptoms your vehicle is experiencing before compiling a repair diagnostic report.'}`,
           is_ai_generated: false,
           created_at: new Date().toISOString(),
         },
@@ -211,6 +238,7 @@ export default function Home() {
 
   const handleNewSession = () => {
     localStorage.removeItem('mechanic_session_id');
+    localStorage.removeItem('mechanic_vehicle');
     setSessionId(null);
     setAttachedMedia(null);
     setDiagnoses([]);
@@ -220,7 +248,7 @@ export default function Home() {
         id: 'new-welcome',
         session: '',
         sender: 'mechanic',
-        message: "New diagnostic bay initialized. What vehicle trouble can I troubleshoot for you today?",
+        message: "New diagnostic telemetry bay initialized. What vehicle trouble can I troubleshoot for you today?",
         is_ai_generated: false,
         created_at: new Date().toISOString(),
       },
@@ -236,334 +264,613 @@ export default function Home() {
     setBookings((prev) => [booking, ...prev]);
   };
 
-  const vehicleSummary = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ');
+  const vehicleSummary = [vehicle.year, vehicle.make, vehicle.model, vehicle.mileage ? `(${vehicle.mileage})` : ''].filter(Boolean).join(' ');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      {/* Top Header */}
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'var(--surface)' }}>
+      {/* Fixed Sticky Header */}
       <Header
         vehicle={vehicle}
-        onUpdateVehicle={(v) => setVehicle(v)}
+        onUpdateVehicle={handleUpdateVehicle}
         onNewSession={handleNewSession}
         onOpenHistory={() => setIsHistoryOpen(true)}
         historyCount={diagnoses.length + bookings.length}
-        voiceEnabled={voiceEnabled}
-        onToggleVoice={() => setVoiceEnabled(!voiceEnabled)}
         onOpenObdLibrary={() => setIsObdModalOpen(true)}
       />
 
-      {/* Main Layout Container */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
-        <main style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          maxWidth: 1020,
-          margin: '0 auto',
-          width: '100%',
-          padding: '1rem 1.25rem',
-          height: '100%',
-          overflow: 'hidden'
-        }}>
-          {/* Scrollable Conversation Stream */}
-          <div style={{
-            flex: 1,
-            overflowY: 'auto',
-            paddingRight: '0.4rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '1.2rem',
-            paddingBottom: '1rem',
-          }}>
-            {/* Quick Diagnostic Category Chips */}
-            {messages.length <= 1 && (
-              <div style={{
-                background: 'rgba(12, 21, 39, 0.75)',
-                border: '1px solid rgba(59, 130, 246, 0.25)',
-                borderRadius: 'var(--radius-lg)',
-                padding: '1.25rem 1.4rem',
-                margin: '0.5rem 0',
-                backdropFilter: 'blur(16px)',
-                boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                  <span style={{ fontSize: '0.74rem', color: 'var(--accent-cyan)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
-                    Instant Diagnostic Diagnostic Starters
-                  </span>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                    Click an issue to test
-                  </span>
-                </div>
-                <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', marginBottom: '0.9rem' }}>
-                  Select a common mechanical symptom or type your car's symptoms below:
-                </p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '0.55rem' }}>
-                  {CATEGORY_CHIPS.map((cat, idx) => {
-                    const IconComponent = cat.icon;
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => handleSendMessage(cat.query)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.6rem',
-                          padding: '0.65rem 0.95rem',
-                          background: 'rgba(15, 23, 42, 0.7)',
-                          border: '1px solid rgba(59, 130, 246, 0.2)',
-                          borderRadius: 'var(--radius-md)',
-                          color: '#e2e8f0',
-                          fontSize: '0.82rem',
-                          fontWeight: 600,
-                          textAlign: 'left',
-                          transition: 'all 0.2s',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = 'var(--accent-cyan)';
-                          e.currentTarget.style.background = 'rgba(30, 58, 138, 0.35)';
-                          e.currentTarget.style.boxShadow = '0 0 16px rgba(56, 189, 248, 0.2)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.2)';
-                          e.currentTarget.style.background = 'rgba(15, 23, 42, 0.7)';
-                          e.currentTarget.style.boxShadow = 'none';
-                        }}
-                      >
-                        <div style={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: 'var(--radius-sm)',
-                          background: 'rgba(59, 130, 246, 0.2)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--accent-cyan)'
-                        }}>
-                          <IconComponent size={15} />
-                        </div>
-                        <span>{cat.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+      {/* Main Workspace (Offset for fixed 64px header) */}
+      <main style={{ width: '100%', paddingTop: 64, flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', width: '100%', paddingBottom: 220 }}>
+          
+          {/* Minimalist Quick Brand Strip */}
+          <section
+            style={{
+              width: '100%',
+              borderBottom: '1px solid rgba(38, 42, 51, 0.6)',
+              background: 'rgba(10, 14, 22, 0.75)',
+              padding: '0.5rem 0',
+            }}
+          >
+            <div
+              style={{
+                maxWidth: 896,
+                margin: '0 auto',
+                padding: '0 1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '0.75rem',
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 10,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: '#94a3b8',
+                  flexShrink: 0,
+                  fontWeight: 600,
+                }}
+              >
+                Active Fleet Make:
+              </span>
 
-            {/* Chat Messages Feed */}
-            {messages.map((msg) => {
-              const isUser = msg.sender === 'user';
-              return (
-                <div
-                  key={msg.id}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  overflowX: 'auto',
+                  scrollbarWidth: 'none',
+                  paddingBottom: 2,
+                }}
+              >
+                {FLEET_MAKES.map((m) => {
+                  const isActive = vehicle.make?.toLowerCase() === m.toLowerCase();
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => {
+                        const updatedMake = vehicle.make?.toLowerCase() === m.toLowerCase() ? '' : m;
+                        handleUpdateVehicle({ ...vehicle, make: updatedMake });
+                      }}
+                      style={{
+                        padding: '0.25rem 0.75rem',
+                        borderRadius: 'var(--radius-full)',
+                        background: isActive ? '#ff6b00' : '#1c2028',
+                        color: isActive ? '#fff' : '#94a3b8',
+                        border: `1px solid ${isActive ? '#ff6b00' : '#262a33'}`,
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 10,
+                        fontWeight: isActive ? 700 : 500,
+                        flexShrink: 0,
+                        boxShadow: isActive ? '0 0 10px rgba(255, 107, 0, 0.35)' : 'none',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+
+          {/* Focused Workspace Container */}
+          <div
+            style={{
+              maxWidth: 896,
+              width: '100%',
+              margin: '0 auto',
+              padding: '1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.25rem',
+            }}
+          >
+            {/* Quick Diagnostic Starters (Minimalist Pill Grid - 4 cards) */}
+            <section
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '0.5rem',
+              }}
+            >
+              {QUICK_STARTERS.map((cat, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSendMessage(cat.query)}
                   style={{
                     display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: isUser ? 'flex-end' : 'flex-start',
-                    animation: 'fadeIn 0.25s ease-out'
+                    alignItems: 'center',
+                    gap: '0.65rem',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: 'var(--radius-lg)',
+                    background: 'rgba(38, 42, 51, 0.5)',
+                    border: '1px solid rgba(49, 53, 62, 0.6)',
+                    textAlign: 'left',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = cat.color;
+                    e.currentTarget.style.background = 'rgba(49, 53, 62, 0.8)';
+                    e.currentTarget.style.boxShadow = `0 0 14px ${cat.color}25`;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(49, 53, 62, 0.6)';
+                    e.currentTarget.style.background = 'rgba(38, 42, 51, 0.5)';
+                    e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
-                  {/* Sender Tag */}
-                  <div style={{
-                    fontSize: '0.72rem',
-                    color: 'var(--text-dim)',
-                    marginBottom: '0.3rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.45rem',
-                    padding: '0 0.5rem'
-                  }}>
-                    {!isUser && <ShieldCheck size={13} color="var(--accent-cyan)" />}
-                    <span>{isUser ? 'Vehicle Owner' : 'Senior Master Technician'}</span>
-                    {!isUser && (
-                      <span style={{
-                        fontSize: '0.64rem',
-                        padding: '1px 6px',
-                        borderRadius: 4,
-                        background: msg.is_ai_generated ? 'rgba(56, 189, 248, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-                        color: msg.is_ai_generated ? 'var(--accent-cyan)' : 'var(--accent-blue-light)',
-                        border: `1px solid ${msg.is_ai_generated ? 'rgba(56, 189, 248, 0.35)' : 'rgba(59, 130, 246, 0.3)'}`
-                      }}>
-                        {msg.is_ai_generated ? 'Multimodal Inspection' : 'Rule Guardrail'}
-                      </span>
-                    )}
+                  <span
+                    className="material-symbols-outlined"
+                    style={{ fontSize: 18, color: cat.color, flexShrink: 0 }}
+                  >
+                    {cat.icon}
+                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: '#dfe2ee',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {cat.title}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: '#94a3b8',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {cat.sub}
+                    </span>
                   </div>
+                </button>
+              ))}
+            </section>
 
-                  {/* Message Bubble */}
+            {/* Chat Stream Messages */}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {messages.map((msg) => {
+                const isUser = msg.sender === 'user';
+                return (
                   <div
+                    key={msg.id}
                     style={{
-                      maxWidth: '84%',
-                      padding: '0.95rem 1.25rem',
-                      borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                      background: isUser
-                        ? 'linear-gradient(135deg, #1d4ed8 0%, #0369a1 100%)'
-                        : 'rgba(12, 21, 39, 0.85)',
-                      border: `1px solid ${isUser ? 'rgba(147, 197, 253, 0.4)' : 'rgba(59, 130, 246, 0.22)'}`,
-                      color: '#fff',
-                      fontSize: '0.92rem',
-                      lineHeight: 1.6,
-                      boxShadow: isUser ? '0 4px 20px rgba(37, 99, 235, 0.35)' : '0 4px 20px rgba(0, 0, 0, 0.4)',
-                      whiteSpace: 'pre-wrap',
-                      backdropFilter: 'blur(12px)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: isUser ? 'flex-end' : 'flex-start',
+                      animation: 'fadeIn 0.2s ease-out',
+                      width: '100%',
                     }}
                   >
-                    {msg.message}
+                    {isUser ? (
+                      /* User Message Bubble */
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, maxWidth: '90%' }}>
+                        <div
+                          style={{
+                            background: '#181c24',
+                            border: '1px solid #262a33',
+                            maxWidth: 580,
+                            borderRadius: '16px 16px 4px 16px',
+                            padding: '1rem',
+                            color: '#dfe2ee',
+                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.4)',
+                          }}
+                        >
+                          <FormattedMessage content={msg.message} />
 
-                    {/* Media Attachments Preview inside bubble */}
-                    {msg.media_detail && (
-                      <div style={{ marginTop: '0.85rem', paddingTop: '0.65rem', borderTop: '1px solid rgba(255,255,255,0.12)' }}>
-                        {msg.media_detail.file_type === 'image' && (
-                          <div style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', maxWidth: 380, border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                            <img
-                              src={msg.media_detail.file_url}
-                              alt={msg.media_detail.original_name}
-                              style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 290, objectFit: 'cover' }}
-                            />
-                          </div>
-                        )}
-                        {msg.media_detail.file_type === 'audio' && (
-                          <div style={{
-                            background: 'rgba(7, 13, 26, 0.75)',
-                            padding: '0.65rem 0.85rem',
-                            borderRadius: 'var(--radius-md)',
-                            border: '1px solid rgba(59, 130, 246, 0.3)'
-                          }}>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--accent-cyan)', marginBottom: 4, fontWeight: 600 }}>
-                              Recorded Engine Acoustic Waveform:
+                          {/* Media attachments */}
+                          {msg.media_detail && (
+                            <div
+                              style={{
+                                marginTop: '0.75rem',
+                                paddingTop: '0.75rem',
+                                borderTop: '1px solid #262a33',
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: '0.5rem',
+                              }}
+                            >
+                              {msg.media_detail.file_type === 'image' && (
+                                <div
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    padding: '0.4rem 0.65rem',
+                                    borderRadius: 'var(--radius-lg)',
+                                    background: '#0a0e16',
+                                    border: '1px solid #262a33',
+                                  }}
+                                >
+                                  <img
+                                    src={msg.media_detail.file_url}
+                                    alt={msg.media_detail.original_name}
+                                    style={{ width: 26, height: 26, borderRadius: 4, objectFit: 'cover' }}
+                                  />
+                                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#dfe2ee', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {msg.media_detail.original_name}
+                                  </span>
+                                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--severity-critical)', fontWeight: 700 }}>
+                                    Attached
+                                  </span>
+                                </div>
+                              )}
+
+                              {msg.media_detail.file_type === 'audio' && (
+                                <div
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    padding: '0.4rem 0.65rem',
+                                    borderRadius: 'var(--radius-lg)',
+                                    background: '#0a0e16',
+                                    border: '1px solid #262a33',
+                                  }}
+                                >
+                                  <span className="material-symbols-outlined" style={{ color: '#06B6D4', fontSize: 16 }}>
+                                    graphic_eq
+                                  </span>
+                                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#dfe2ee', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {msg.media_detail.original_name}
+                                  </span>
+                                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#ff6b00', fontWeight: 700 }}>
+                                    Acoustic
+                                  </span>
+                                </div>
+                              )}
+
+                              {msg.media_detail.file_type === 'video' && (
+                                <div
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    padding: '0.4rem 0.65rem',
+                                    borderRadius: 'var(--radius-lg)',
+                                    background: '#0a0e16',
+                                    border: '1px solid #262a33',
+                                  }}
+                                >
+                                  <span className="material-symbols-outlined" style={{ color: '#4cd7f6', fontSize: 16 }}>
+                                    videocam
+                                  </span>
+                                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#dfe2ee', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {msg.media_detail.original_name}
+                                  </span>
+                                </div>
+                              )}
                             </div>
-                            <audio controls src={msg.media_detail.file_url} style={{ width: '100%', height: 38 }} />
+                          )}
+                        </div>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#94a3b8', paddingRight: 4 }}>
+                          {formatTime(msg.created_at)} • Vehicle Owner
+                        </span>
+                      </div>
+                    ) : (
+                      /* AI Mechanic (Mac) Bubble */
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, maxWidth: '90%' }}>
+                        <div
+                          style={{
+                            background: '#111827',
+                            border: '1px solid #1E293B',
+                            borderRadius: '16px 16px 16px 4px',
+                            padding: '1.25rem',
+                            color: '#dfe2ee',
+                            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.85rem',
+                            maxWidth: 680,
+                          }}
+                        >
+                          {/* AI Header Line */}
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              paddingBottom: '0.65rem',
+                              borderBottom: '1px solid #1E293B',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <div
+                                style={{
+                                  width: 24,
+                                  height: 24,
+                                  borderRadius: '50%',
+                                  background: 'rgba(255, 107, 0, 0.15)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: '#ff6b00',
+                                }}
+                              >
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                                  verified
+                                </span>
+                              </div>
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: '#dfe2ee' }}>
+                                Mac (Senior Master Tech)
+                              </span>
+                              <span
+                                style={{
+                                  fontFamily: 'var(--font-mono)',
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  padding: '1px 6px',
+                                  borderRadius: 4,
+                                  background: 'rgba(239, 68, 68, 0.12)',
+                                  color: '#ef4444',
+                                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                                }}
+                              >
+                                {msg.is_ai_generated ? 'Multimodal Inspection' : 'Master Certified'}
+                              </span>
+                            </div>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#94a3b8' }}>
+                              {formatTime(msg.created_at)}
+                            </span>
                           </div>
-                        )}
-                        {msg.media_detail.file_type === 'video' && (
-                          <div style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', maxWidth: 380, border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                            <video controls src={msg.media_detail.file_url} style={{ width: '100%', maxHeight: 270 }} />
-                          </div>
-                        )}
+
+                          {/* Message Body with Markdown formatting */}
+                          <FormattedMessage content={msg.message} />
+
+                          {/* Metric Readouts Card when diagnosis is ready */}
+                          {diagnoses.length > 0 && msg.id.includes('diag') && (
+                            <div
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(3, 1fr)',
+                                gap: '0.5rem',
+                                padding: '0.25rem 0',
+                              }}
+                            >
+                              <div style={{ background: '#1c2028', padding: '0.65rem', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#94a3b8', display: 'block', textTransform: 'uppercase' }}>
+                                  SEVERITY
+                                </span>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1.1rem', fontWeight: 700, color: 'var(--severity-critical)' }}>
+                                  {diagnoses[0].severity}
+                                </span>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--telemetry-amber)', display: 'block' }}>
+                                  Urgency Index
+                                </span>
+                              </div>
+                              <div style={{ background: '#1c2028', padding: '0.65rem', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#94a3b8', display: 'block', textTransform: 'uppercase' }}>
+                                  EST. COST
+                                </span>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1.05rem', fontWeight: 700, color: '#ff6b00' }}>
+                                  {diagnoses[0].estimated_cost_range || '₹0'}
+                                </span>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#94a3b8', display: 'block' }}>
+                                  INR (₹)
+                                </span>
+                              </div>
+                              <div style={{ background: '#1c2028', padding: '0.65rem', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#94a3b8', display: 'block', textTransform: 'uppercase' }}>
+                                  SERVICES
+                                </span>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1.1rem', fontWeight: 700, color: '#4cd7f6' }}>
+                                  {diagnoses[0].recommended_services?.length || 1} ITEM
+                                </span>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#94a3b8', display: 'block' }}>
+                                  Verified OEM
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* In-Message DVI Report Callout Bar */}
+                          {diagnoses.length > 0 && (
+                            <div
+                              style={{
+                                paddingTop: '0.65rem',
+                                borderTop: '1px solid #1E293B',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '0.75rem',
+                                flexWrap: 'wrap',
+                              }}
+                            >
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#94a3b8' }}>
+                                Diagnostic inspection & repair quote compiled below
+                              </span>
+                              <a
+                                href="#dvi-report-section"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                  padding: '0.45rem 0.85rem',
+                                  borderRadius: 'var(--radius-lg)',
+                                  background: '#ff6b00',
+                                  color: '#fff',
+                                  fontFamily: 'var(--font-mono)',
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.04em',
+                                  textDecoration: 'none',
+                                  boxShadow: '0 0 10px rgba(255, 107, 0, 0.35)',
+                                }}
+                              >
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                                  assignment
+                                </span>
+                                <span>Review DVI Report</span>
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#94a3b8', paddingLeft: 4 }}>
+                          AI Master Diagnostic Model v4.28
+                        </span>
                       </div>
                     )}
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
 
-            {/* In-Chat Diagnosis Report */}
-            {diagnoses.length > 0 && showReport && (
-              <div style={{ position: 'relative', animation: 'fadeIn 0.35s ease-out' }}>
-                <button
-                  onClick={() => setShowReport(false)}
-                  title="Close Report"
+              {/* In-Flight Analyzing Indicator */}
+              {isSending && (
+                <div
                   style={{
-                    position: 'absolute',
-                    top: 10,
-                    right: 10,
-                    zIndex: 10,
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    background: 'rgba(15, 23, 42, 0.85)',
-                    border: '1px solid rgba(239,68,68,0.4)',
-                    color: '#ef4444',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.85rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    lineHeight: 1,
-                    transition: 'all 0.15s',
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.background = 'rgba(239,68,68,0.2)';
-                    e.currentTarget.style.borderColor = '#ef4444';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.background = 'rgba(15, 23, 42, 0.85)';
-                    e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)';
+                    gap: '0.5rem',
+                    padding: '0.5rem 0.75rem',
+                    color: '#4cd7f6',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 12,
+                    background: '#111827',
+                    border: '1px solid #1E293B',
+                    borderRadius: 'var(--radius-lg)',
+                    width: 'fit-content',
                   }}
                 >
-                  ✕
+                  <span className="material-symbols-outlined animate-spin" style={{ fontSize: 16, color: '#06B6D4' }}>
+                    refresh
+                  </span>
+                  <span>Senior master technician analyzing mechanical parameters...</span>
+                </div>
+              )}
+
+              {/* DVI Inspection Report Card */}
+              {diagnoses.length > 0 && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  <DiagnosisCard
+                    diagnosis={diagnoses[0]}
+                    vehicleSummary={vehicleSummary}
+                    onBookClick={handleBookClick}
+                  />
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </section>
+
+            {/* Quick Action Bar for Diagnostic Synthesis */}
+            {diagnoses.length === 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  background: 'rgba(17, 24, 39, 0.85)',
+                  backdropFilter: 'blur(16px)',
+                  border: '1px solid #1E293B',
+                  borderRadius: 'var(--radius-lg)',
+                  padding: '0.65rem 1rem',
+                  gap: '0.75rem',
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#06B6D4' }}>
+                    description
+                  </span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                    Ready for a formal inspection estimate?
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGenerateDiagnosis}
+                  disabled={isDiagnosing}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                    padding: '0.45rem 1rem',
+                    background: '#ff6b00',
+                    color: '#fff',
+                    fontFamily: 'var(--font-mono)',
+                    fontWeight: 700,
+                    fontSize: 11,
+                    borderRadius: 'var(--radius-sm)',
+                    boxShadow: '0 0 14px rgba(255, 107, 0, 0.4)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 16, flexShrink: 0 }}>
+                    auto_awesome
+                  </span>
+                  <span>{isDiagnosing ? 'Synthesizing...' : 'Generate Full Diagnostic Report'}</span>
                 </button>
-                <DiagnosisCard
-                  diagnosis={diagnoses[0]}
-                  onBookClick={handleBookClick}
-                />
               </div>
             )}
-
-            {/* Typing / Analyzing Indicator */}
-            {isSending && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.6rem', color: 'var(--accent-blue-light)', fontSize: '0.85rem' }}>
-                <Activity size={16} className="animate-spin" style={{ color: 'var(--accent-cyan)' }} />
-                <span>Senior technician analyzing mechanical parameters...</span>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
           </div>
+        </div>
+      </main>
 
-          {/* Quick Action Bar for Diagnostic Synthesis */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'rgba(12, 21, 39, 0.85)',
+      {/* Sleek Floating Minimalist Console Bar (Fixed bottom-4) */}
+      <div
+        className="chat-composer-bar"
+        style={{
+          position: 'fixed',
+          bottom: 46,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '94%',
+          maxWidth: 768,
+          zIndex: 40,
+        }}
+      >
+        <div
+          style={{
+            background: 'rgba(10, 14, 22, 0.94)',
             backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(59, 130, 246, 0.25)',
-            borderRadius: 'var(--radius-md)',
-            padding: '0.55rem 0.95rem',
-            marginBottom: '0.65rem',
-            gap: '0.5rem',
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <FileText size={16} color="var(--accent-cyan)" />
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Detailed enough symptoms?
-              </span>
-            </div>
-            <button
-              onClick={handleGenerateDiagnosis}
-              disabled={isDiagnosing}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.45rem',
-                padding: '0.4rem 0.95rem',
-                background: 'linear-gradient(135deg, #1d4ed8, #0284c7)',
-                color: '#fff',
-                fontWeight: 700,
-                fontSize: '0.8rem',
-                borderRadius: 'var(--radius-sm)',
-                boxShadow: '0 0 16px rgba(37, 99, 235, 0.35)'
-              }}
-            >
-              <Sparkles size={14} />
-              <span>{isDiagnosing ? 'Synthesizing...' : 'Generate Full Diagnostic Report (₹)'}</span>
-            </button>
-          </div>
-
-          {/* Interactive Input Bar */}
-          <div style={{
-            background: 'rgba(12, 21, 39, 0.9)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(59, 130, 246, 0.35)',
-            borderRadius: 'var(--radius-xl)',
-            padding: '0.85rem 1rem',
-            boxShadow: '0 12px 35px rgba(0, 0, 0, 0.6), 0 0 25px rgba(37, 99, 235, 0.15)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(38, 42, 51, 0.8)',
+            borderRadius: 'var(--radius-2xl)',
+            padding: '0.5rem 0.65rem',
+            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.85), 0 0 20px rgba(255, 107, 0, 0.08)',
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.65rem',
-          }}>
-            {/* Media Uploader Row */}
-            <MediaUploader
-              sessionId={sessionId}
-              onMediaUploaded={(media) => setAttachedMedia(media)}
-              attachedMedia={attachedMedia}
-              onRemoveMedia={() => setAttachedMedia(null)}
-              disabled={isSending}
-            />
+            gap: '0.35rem',
+          }}
+        >
+          {/* Integrated Media Controller & Attached Preview */}
+          <MediaUploader
+            sessionId={sessionId}
+            onMediaUploaded={(media) => setAttachedMedia(media)}
+            attachedMedia={attachedMedia}
+            onRemoveMedia={() => setAttachedMedia(null)}
+            disabled={isSending}
+          />
 
-            {/* Text Input Row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          {/* Text Input Row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <div
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                background: '#1c2028',
+                padding: '0.45rem 0.85rem',
+                borderRadius: 'var(--radius-xl)',
+                border: '1px solid #262a33',
+              }}
+            >
               <input
                 type="text"
                 value={inputText}
@@ -576,53 +883,96 @@ export default function Home() {
                 }}
                 placeholder={
                   attachedMedia
-                    ? `Explain where this ${attachedMedia.file_type} was recorded or how it behaves...`
-                    : "Describe car sound, warning light, fluid leak, or mechanical fault..."
+                    ? `Explain symptoms with attached ${attachedMedia.file_type}...`
+                    : "Describe car sound, warning light, or mechanical fault..."
                 }
                 disabled={isSending}
                 style={{
-                  flex: 1,
-                  padding: '0.8rem 1.15rem',
-                  background: 'var(--bg-input)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
-                  color: '#fff',
-                  fontSize: '0.92rem',
+                  width: '100%',
+                  background: 'transparent',
+                  border: 'none',
                   outline: 'none',
-                  boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5)'
+                  color: '#dfe2ee',
+                  fontSize: 13,
+                  fontFamily: 'var(--font-sans)',
                 }}
               />
-
-              <button
-                onClick={() => handleSendMessage()}
-                disabled={isSending || (!inputText.trim() && !attachedMedia)}
-                style={{
-                  width: 46,
-                  height: 46,
-                  borderRadius: 'var(--radius-lg)',
-                  background: isSending || (!inputText.trim() && !attachedMedia)
-                    ? 'rgba(30, 41, 59, 0.5)'
-                    : 'linear-gradient(135deg, #2563eb 0%, #0284c7 100%)',
-                  color: isSending || (!inputText.trim() && !attachedMedia)
-                    ? 'var(--text-dim)'
-                    : '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s',
-                  flexShrink: 0,
-                  boxShadow: isSending || (!inputText.trim() && !attachedMedia)
-                    ? 'none'
-                    : '0 0 20px rgba(37, 99, 235, 0.5)'
-                }}
-                title="Send Message to Technician"
-              >
-                <Send size={18} />
-              </button>
             </div>
+
+            {/* Send Button */}
+            <button
+              type="button"
+              onClick={() => handleSendMessage()}
+              disabled={isSending || (!inputText.trim() && !attachedMedia)}
+              style={{
+                padding: '0.5rem 1.15rem',
+                borderRadius: 'var(--radius-xl)',
+                background: isSending || (!inputText.trim() && !attachedMedia) ? '#262a33' : '#ff6b00',
+                color: isSending || (!inputText.trim() && !attachedMedia) ? '#94a3b8' : '#fff',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                flexShrink: 0,
+                boxShadow: isSending || (!inputText.trim() && !attachedMedia) ? 'none' : '0 0 14px rgba(255, 107, 0, 0.45)',
+                transition: 'all 0.15s',
+              }}
+              title="Send to Technician"
+            >
+              <span>Send</span>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                north_east
+              </span>
+            </button>
           </div>
-        </main>
+        </div>
       </div>
+
+      {/* Industrial Telemetry Footer - Fixed at bottom */}
+      <footer
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 34,
+          background: '#0a0e16',
+          borderTop: '1px solid #1E293B',
+          padding: '0 1.25rem',
+          zIndex: 35,
+          display: 'flex',
+          alignItems: 'center',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1320,
+            width: '100%',
+            margin: '0 auto',
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+            color: '#94a3b8',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ color: '#dfe2ee', fontWeight: 600 }}>TORQUE INDUSTRIAL PROTOCOL CAN-FD 2.0B</span>
+            <span className="hidden-mobile">LATENCY: 1.2ms // SECURE HARDWARE ENCLAVE</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+            <span className="hidden-mobile">DIAGNOSTIC ENGINE: NEURAL-TECH v4.28</span>
+            <span style={{ color: '#ff6b00', fontWeight: 700 }}>SYSTEM HEALTH: NOMINAL</span>
+          </div>
+        </div>
+      </footer>
 
       {/* Booking Modal */}
       {isBookingModalOpen && (
@@ -635,7 +985,7 @@ export default function Home() {
         />
       )}
 
-      {/* Diagnosis & Booking History Drawer */}
+      {/* Diagnosis & Booking Records Drawer */}
       <HistoryDrawer
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
@@ -643,48 +993,69 @@ export default function Home() {
         bookings={bookings}
         onSelectDiagnosis={(diag) => {
           setBookingDiagnosis(diag);
+          const elem = document.getElementById('dvi-report-section');
+          elem?.scrollIntoView({ behavior: 'smooth' });
         }}
       />
 
       {/* OBD-II Fault Code Lookup Modal */}
       {isObdModalOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(3, 7, 18, 0.8)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 100,
-          padding: '1rem'
-        }}>
-          <div style={{
-            background: '#0c1527',
-            border: '1px solid rgba(59, 130, 246, 0.4)',
-            borderRadius: 'var(--radius-xl)',
-            width: '100%',
-            maxWidth: 520,
-            padding: '1.75rem',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.8), 0 0 35px rgba(37, 99, 235, 0.25)',
-            animation: 'fadeIn 0.25s ease-out'
-          }}>
+        <div
+          id="obd-modal"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(10, 14, 22, 0.88)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: '1rem',
+          }}
+          onClick={() => setIsObdModalOpen(false)}
+        >
+          <div
+            style={{
+              background: '#111827',
+              border: '1px solid #1E293B',
+              borderRadius: 'var(--radius-xl)',
+              width: '100%',
+              maxWidth: 520,
+              padding: '1.75rem',
+              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.9), 0 0 35px rgba(6, 182, 212, 0.2)',
+              animation: 'fadeIn 0.25s ease-out',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Sparkles size={20} color="var(--accent-cyan)" />
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>
+                <span className="material-symbols-outlined" style={{ color: '#4cd7f6', fontSize: 22 }}>
+                  memory
+                </span>
+                <h3
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '1.2rem',
+                    fontWeight: 700,
+                    color: '#dfe2ee',
+                    letterSpacing: '-0.02em',
+                  }}
+                >
                   OBD-II Fault Code Scanner
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => setIsObdModalOpen(false)}
-                style={{ color: 'var(--text-muted)', padding: 4 }}
+                style={{ color: '#94a3b8', padding: 4 }}
               >
-                ✕
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>close</span>
               </button>
             </div>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-              Click any Diagnostic Trouble Code (DTC) below to automatically query the master technician for probable causes and fixes:
+            <p style={{ fontSize: '0.82rem', color: '#94a3b8', marginBottom: '1.25rem' }}>
+              Select a Diagnostic Trouble Code (DTC) to query the master technician for probable causes, sensor freeze frames, and repair guidance:
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
@@ -693,39 +1064,55 @@ export default function Home() {
                   key={item.code}
                   onClick={() => {
                     setIsObdModalOpen(false);
-                    handleSendMessage(`My car is showing OBD-II code ${item.code}: ${item.title}. What should I inspect?`);
+                    handleSendMessage(`My vehicle is triggering OBD-II code ${item.code}: ${item.title}. What should I inspect first?`);
                   }}
                   style={{
-                    background: 'rgba(15, 23, 42, 0.7)',
-                    border: '1px solid rgba(59, 130, 246, 0.2)',
-                    borderRadius: 'var(--radius-md)',
+                    background: '#1c2028',
+                    border: '1px solid #1E293B',
+                    borderRadius: 'var(--radius-lg)',
                     padding: '0.75rem 1rem',
                     cursor: 'pointer',
-                    transition: 'all 0.2s',
+                    transition: 'all 0.15s ease',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--accent-cyan)';
-                    e.currentTarget.style.background = 'rgba(30, 58, 138, 0.35)';
+                    e.currentTarget.style.borderColor = '#06B6D4';
+                    e.currentTarget.style.background = '#262a33';
                     e.currentTarget.style.transform = 'translateX(4px)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.2)';
-                    e.currentTarget.style.background = 'rgba(15, 23, 42, 0.7)';
+                    e.currentTarget.style.borderColor = '#1E293B';
+                    e.currentTarget.style.background = '#1c2028';
                     e.currentTarget.style.transform = 'translateX(0)';
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent-cyan)', fontSize: '0.9rem' }}>
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 800,
+                        color: '#06B6D4',
+                        fontSize: 13,
+                        letterSpacing: '0.04em',
+                      }}
+                    >
                       {item.code}
                     </span>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--accent-blue-light)', fontWeight: 600 }}>
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 10,
+                        color: '#ff6b00',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                      }}
+                    >
                       Inspect →
                     </span>
                   </div>
-                  <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#fff', marginBottom: 2 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#dfe2ee', marginBottom: 2 }}>
                     {item.title}
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>
                     {item.desc}
                   </div>
                 </div>

@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Camera, Mic, Video, X, Loader2, StopCircle, FileAudio, FileVideo, FileImage, Radio } from 'lucide-react';
 import { uploadMediaFile, UploadedMedia } from '@/lib/api';
 
 interface MediaUploaderProps {
@@ -17,13 +16,15 @@ export default function MediaUploader({
   onMediaUploaded,
   attachedMedia,
   onRemoveMedia,
-  disabled
+  disabled,
 }: MediaUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -55,8 +56,9 @@ export default function MediaUploader({
       };
 
       mediaRecorder.onstop = async () => {
+        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const file = new File([audioBlob], `engine_sound_${Date.now()}.webm`, { type: 'audio/webm' });
+        const file = new File([audioBlob], `engine_acoustic_${Date.now()}.webm`, { type: 'audio/webm' });
 
         try {
           setIsUploading(true);
@@ -66,13 +68,19 @@ export default function MediaUploader({
           alert(err.message || 'Error uploading recorded audio.');
         } finally {
           setIsUploading(false);
+          setIsRecording(false);
+          setRecordingSeconds(0);
         }
 
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
       };
 
       mediaRecorder.start();
       setIsRecording(true);
+      setRecordingSeconds(0);
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
     } catch (err) {
       alert('Microphone access denied or audio recording not supported in this browser.');
     }
@@ -81,7 +89,7 @@ export default function MediaUploader({
   const stopAudioRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
-      setIsRecording(false);
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     }
   };
 
@@ -93,19 +101,108 @@ export default function MediaUploader({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', width: '100%' }}>
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,audio/*,video/*"
+        accept="image/*,video/*"
         style={{ display: 'none' }}
         onChange={handleFileChange}
       />
 
-      {/* Media Action Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-        {/* Photo Upload Button */}
+      {/* Media Preview Chip if attached */}
+      {attachedMedia && (
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.35rem 0.75rem',
+            borderRadius: 'var(--radius-lg)',
+            background: '#1c2028',
+            border: '1px solid #1E293B',
+            color: '#dfe2ee',
+            fontSize: 12,
+            fontFamily: 'var(--font-mono)',
+            maxWidth: '100%',
+            width: 'fit-content',
+            animation: 'fadeIn 0.2s ease-out',
+          }}
+        >
+          {attachedMedia.file_type === 'image' && (
+            <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#ff6b00' }}>
+              photo_camera
+            </span>
+          )}
+          {attachedMedia.file_type === 'audio' && (
+            <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#06B6D4' }}>
+              graphic_eq
+            </span>
+          )}
+          {attachedMedia.file_type === 'video' && (
+            <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#4cd7f6' }}>
+              videocam
+            </span>
+          )}
+
+          <span
+            style={{
+              maxWidth: 200,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontWeight: 600,
+            }}
+          >
+            {attachedMedia.original_name}
+          </span>
+          <span style={{ color: '#94a3b8', fontSize: 10 }}>
+            {formatSize(attachedMedia.file_size)}
+          </span>
+
+          <button
+            type="button"
+            onClick={onRemoveMedia}
+            style={{
+              color: '#94a3b8',
+              display: 'flex',
+              padding: 2,
+              borderRadius: '50%',
+              marginLeft: 4,
+            }}
+            title="Remove attachment"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
+              close
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* Uploading Status */}
+      {isUploading && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            fontSize: 11,
+            fontFamily: 'var(--font-mono)',
+            color: '#ff6b00',
+            paddingLeft: '0.25rem',
+          }}
+        >
+          <span className="material-symbols-outlined animate-spin" style={{ fontSize: 14 }}>
+            refresh
+          </span>
+          <span>Uploading diagnostic media for multimodal analysis...</span>
+        </div>
+      )}
+
+      {/* Media Trigger Buttons */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+        {/* Photo Button */}
         <button
           type="button"
           disabled={disabled || isUploading || isRecording}
@@ -116,59 +213,68 @@ export default function MediaUploader({
             }
           }}
           style={{
+            padding: '0.5rem',
+            borderRadius: 'var(--radius-xl)',
+            background: '#262a33',
+            color: '#dfe2ee',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.4rem',
-            padding: '0.45rem 0.85rem',
-            borderRadius: 'var(--radius-full)',
-            background: 'rgba(30, 58, 138, 0.2)',
-            border: '1px solid rgba(59, 130, 246, 0.3)',
-            color: 'var(--accent-cyan)',
-            fontSize: '0.78rem',
-            fontWeight: 600,
+            justifyContent: 'center',
+            border: '1px solid #31353e',
           }}
-          title="Attach photo of dashboard code, tire tread, oil leak, or brake rotor"
+          title="Inspect Photo (Dashboard lights, brake rotors, leaks)"
         >
-          <Camera size={15} />
-          <span>Inspect Photo</span>
+          <span className="material-symbols-outlined" style={{ fontSize: 18, display: 'block' }}>
+            photo_camera
+          </span>
         </button>
 
-        {/* Audio Recording / Upload Button */}
+        {/* Audio Recording Button */}
         {isRecording ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.35rem 0.75rem',
+              borderRadius: 'var(--radius-xl)',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid var(--severity-critical)',
+              color: '#ef4444',
+            }}
+          >
             <button
               type="button"
               onClick={stopAudioRecording}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.45rem 0.95rem',
-                borderRadius: 'var(--radius-full)',
-                background: 'rgba(244, 63, 94, 0.2)',
-                border: '1px solid rgba(244, 63, 94, 0.6)',
-                color: '#f43f5e',
-                fontSize: '0.78rem',
+                gap: '0.35rem',
+                color: '#ef4444',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
                 fontWeight: 700,
-                boxShadow: '0 0 15px rgba(244, 63, 94, 0.3)'
               }}
+              title="Stop Recording"
             >
-              <StopCircle size={15} />
-              <span>Stop & Analyze</span>
+              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
+                stop_circle
+              </span>
+              <span>Stop ({recordingSeconds}s)</span>
             </button>
 
-            {/* Pulsing Visualizer Bars */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 3, height: 18 }}>
-              {[0.4, 0.8, 1.2, 0.6, 1.0, 0.5, 0.9].map((delay, i) => (
+            {/* Waveform indicator */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 16 }}>
+              {[0.2, 0.6, 1.0, 0.4, 0.8].map((delay, i) => (
                 <div
                   key={i}
                   style={{
-                    width: 3,
-                    height: 14,
-                    background: '#f43f5e',
+                    width: 2.5,
+                    height: 12,
+                    background: '#ef4444',
                     borderRadius: 2,
-                    animation: `waveBar 0.8s ease-in-out infinite alternate`,
-                    animationDelay: `${delay}s`
+                    animation: 'waveBar 0.8s ease-in-out infinite alternate',
+                    animationDelay: `${delay}s`,
                   }}
                 />
               ))}
@@ -179,26 +285,26 @@ export default function MediaUploader({
             type="button"
             disabled={disabled || isUploading}
             onClick={startAudioRecording}
+            id="record-sound-btn"
             style={{
+              padding: '0.5rem',
+              borderRadius: 'var(--radius-xl)',
+              background: '#262a33',
+              color: 'var(--telemetry-amber)',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.45rem 0.85rem',
-              borderRadius: 'var(--radius-full)',
-              background: 'rgba(30, 58, 138, 0.2)',
-              border: '1px solid rgba(59, 130, 246, 0.3)',
-              color: 'var(--accent-blue-light)',
-              fontSize: '0.78rem',
-              fontWeight: 600,
+              justifyContent: 'center',
+              border: '1px solid #31353e',
             }}
-            title="Record engine knock, belt squeal, or vibration noise"
+            title="Record Sound (Engine knock, belt squeal, exhaust rumble)"
           >
-            <Mic size={15} />
-            <span>Record Sound</span>
+            <span className="material-symbols-outlined" style={{ fontSize: 18, display: 'block' }}>
+              mic
+            </span>
           </button>
         )}
 
-        {/* Video Upload Button */}
+        {/* Video Button */}
         <button
           type="button"
           disabled={disabled || isUploading || isRecording}
@@ -209,63 +315,22 @@ export default function MediaUploader({
             }
           }}
           style={{
+            padding: '0.5rem',
+            borderRadius: 'var(--radius-xl)',
+            background: '#262a33',
+            color: '#dfe2ee',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.4rem',
-            padding: '0.45rem 0.85rem',
-            borderRadius: 'var(--radius-full)',
-            background: 'rgba(30, 58, 138, 0.2)',
-            border: '1px solid rgba(59, 130, 246, 0.3)',
-            color: '#a5b4fc',
-            fontSize: '0.78rem',
-            fontWeight: 600,
+            justifyContent: 'center',
+            border: '1px solid #31353e',
           }}
-          title="Upload short video of exhaust smoke, wobble, or leak"
+          title="Upload Video (Exhaust smoke, fluid leak, wheel vibration)"
         >
-          <Video size={15} />
-          <span>Upload Video</span>
-        </button>
-
-        {isUploading && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.76rem', color: 'var(--accent-cyan)' }}>
-            <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-            <span>Diagnostic upload in progress...</span>
-          </div>
-        )}
-      </div>
-
-      {/* Attached Media Chip */}
-      {attachedMedia && (
-        <div style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '0.65rem',
-          padding: '0.4rem 0.85rem',
-          background: 'rgba(30, 58, 138, 0.35)',
-          border: '1px solid rgba(96, 165, 250, 0.45)',
-          borderRadius: 'var(--radius-md)',
-          fontSize: '0.8rem',
-          color: '#e0f2fe',
-          maxWidth: '100%',
-          width: 'fit-content',
-          boxShadow: '0 0 12px rgba(56, 189, 248, 0.15)'
-        }}>
-          {attachedMedia.file_type === 'image' && <FileImage size={16} color="var(--accent-cyan)" />}
-          {attachedMedia.file_type === 'audio' && <FileAudio size={16} color="var(--accent-blue-light)" />}
-          {attachedMedia.file_type === 'video' && <FileVideo size={16} color="#c084fc" />}
-          <span style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
-            {attachedMedia.original_name} ({formatSize(attachedMedia.file_size)})
+          <span className="material-symbols-outlined" style={{ fontSize: 18, display: 'block' }}>
+            videocam
           </span>
-          <button
-            type="button"
-            onClick={onRemoveMedia}
-            style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', padding: 2 }}
-            title="Remove attachment"
-          >
-            <X size={15} />
-          </button>
-        </div>
-      )}
+        </button>
+      </div>
     </div>
   );
 }

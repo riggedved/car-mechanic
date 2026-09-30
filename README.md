@@ -1,4 +1,4 @@
-# Apex Car Mechanic AI Diagnostic System
+# Torque AI Car Mechanic Diagnostic System
 
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-blue?logo=react)](https://react.dev/)
@@ -183,7 +183,7 @@ Built with a **hybrid architecture** that combines deterministic automotive rule
 ```json
 {
   "status": "online",
-  "service": "Apex Car Mechanic AI Diagnostic API",
+  "service": "Torque AI Car Mechanic Diagnostic API",
   "version": "1.0.0",
   "endpoints": {
     "chat": "/api/chat/",

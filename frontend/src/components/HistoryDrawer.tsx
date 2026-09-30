@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Search, FileText, Calendar, CheckCircle2, ShieldCheck, ChevronRight } from 'lucide-react';
 import { Diagnosis, Booking } from '@/lib/api';
 
 interface HistoryDrawerProps {
@@ -35,61 +34,95 @@ export default function HistoryDrawer({
   );
 
   return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      background: 'rgba(3, 7, 18, 0.75)',
-      backdropFilter: 'blur(8px)',
-      WebkitBackdropFilter: 'blur(8px)',
-      zIndex: 90,
-      display: 'flex',
-      justifyContent: 'flex-end',
-      animation: 'fadeIn 0.2s ease-out'
-    }}>
-      <div style={{
-        width: '100%',
-        maxWidth: 440,
-        height: '100%',
-        background: '#090f1d',
-        borderLeft: '1px solid rgba(59, 130, 246, 0.3)',
+    <div
+      id="records-drawer"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(10, 14, 22, 0.85)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        zIndex: 90,
         display: 'flex',
-        flexDirection: 'column',
-        boxShadow: '-15px 0 45px rgba(0, 0, 0, 0.8), 0 0 35px rgba(37, 99, 235, 0.15)',
-      }}>
-        {/* Header */}
-        <div style={{
-          padding: '1.25rem 1.5rem',
-          borderBottom: '1px solid rgba(59, 130, 246, 0.2)',
+        justifyContent: 'flex-end',
+        animation: 'fadeIn 0.2s ease-out',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 440,
+          height: '100%',
+          background: '#0a0e16',
+          borderLeft: '1px solid #1E293B',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
+          flexDirection: 'column',
+          boxShadow: '-15px 0 45px rgba(0, 0, 0, 0.8), 0 0 35px rgba(255, 107, 0, 0.1)',
+          animation: 'slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: '1.25rem 1.5rem',
+            borderBottom: '1px solid #1E293B',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: '#111827',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <FileText size={18} color="var(--accent-cyan)" />
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff' }}>
-              Diagnostics & Service Logs
+            <span className="material-symbols-outlined" style={{ color: '#ff6b00', fontSize: 22 }}>
+              history
+            </span>
+            <h3
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '1.1rem',
+                fontWeight: 700,
+                color: '#dfe2ee',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              Diagnostic Records
             </h3>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            style={{ color: 'var(--text-muted)', display: 'flex', padding: 6, borderRadius: '50%', background: 'rgba(30, 41, 59, 0.4)' }}
+            style={{
+              color: '#94a3b8',
+              display: 'flex',
+              padding: 4,
+              borderRadius: '50%',
+              background: '#1c2028',
+              border: '1px solid #1E293B',
+            }}
+            title="Close Drawer"
           >
-            <X size={18} />
+            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>close</span>
           </button>
         </div>
 
         {/* Search Bar */}
-        <div style={{ padding: '0.85rem 1.5rem', borderBottom: '1px solid rgba(30, 41, 59, 0.6)' }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            background: 'var(--bg-input)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-md)',
-            padding: '0.5rem 0.85rem'
-          }}>
-            <Search size={15} color="var(--text-dim)" />
+        <div style={{ padding: '0.85rem 1.5rem', borderBottom: '1px solid #1E293B', background: '#0f131c' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              background: '#090D14',
+              border: '1px solid #1E293B',
+              borderRadius: 'var(--radius-sm)',
+              padding: '0.5rem 0.85rem',
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ color: '#94a3b8', fontSize: 16 }}>
+              search
+            </span>
             <input
               type="text"
               placeholder="Search reports or bookings..."
@@ -99,26 +132,52 @@ export default function HistoryDrawer({
                 background: 'none',
                 border: 'none',
                 outline: 'none',
-                color: '#fff',
-                fontSize: '0.82rem',
-                width: '100%'
+                color: '#dfe2ee',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                width: '100%',
               }}
             />
           </div>
         </div>
 
-        {/* Content list */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {/* Confirmed Bookings Section */}
+        {/* Content Lists */}
+        <div
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '1.25rem 1.5rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.5rem',
+          }}
+        >
+          {/* Confirmed Appointments */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
-              <h4 style={{ fontSize: '0.78rem', color: 'var(--accent-cyan)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '0.65rem',
+              }}
+            >
+              <h4
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 10,
+                  color: '#ff6b00',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  fontWeight: 700,
+                }}
+              >
                 Confirmed Appointments ({filteredBookings.length})
               </h4>
             </div>
 
             {filteredBookings.length === 0 ? (
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-dim)', fontStyle: 'italic' }}>
+              <p style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>
                 No appointment bookings found.
               </p>
             ) : (
@@ -127,24 +186,46 @@ export default function HistoryDrawer({
                   <div
                     key={b.id || b.booking_code}
                     style={{
-                      background: 'rgba(15, 23, 42, 0.7)',
-                      border: '1px solid rgba(59, 130, 246, 0.25)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '0.9rem',
+                      background: '#111827',
+                      border: '1px solid #1E293B',
+                      borderRadius: 'var(--radius-lg)',
+                      padding: '0.85rem 1rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.35rem',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent-cyan)', fontSize: '0.9rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 800,
+                          color: '#ff6b00',
+                          fontSize: 13,
+                        }}
+                      >
                         {b.booking_code}
                       </span>
-                      <span className="badge badge-low" style={{ fontSize: '0.65rem' }}>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: '1px 6px',
+                          borderRadius: 'var(--radius-sm)',
+                          background: 'rgba(16, 185, 129, 0.12)',
+                          color: 'var(--severity-low)',
+                          border: '1px solid rgba(16, 185, 129, 0.3)',
+                          textTransform: 'uppercase',
+                        }}
+                      >
                         {b.status}
                       </span>
                     </div>
-                    <div style={{ fontSize: '0.84rem', color: '#fff', fontWeight: 600, marginBottom: '0.2rem' }}>
+                    <div style={{ fontSize: 13, color: '#dfe2ee', fontWeight: 600 }}>
                       {b.service_requested}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
                       {b.preferred_date} • {b.preferred_time_slot}
                     </div>
                   </div>
@@ -153,66 +234,100 @@ export default function HistoryDrawer({
             )}
           </div>
 
-          {/* Diagnosis History Section */}
+          {/* Inspection Reports Section */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
-              <h4 style={{ fontSize: '0.78rem', color: 'var(--accent-blue-light)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '0.65rem',
+              }}
+            >
+              <h4
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 10,
+                  color: '#4cd7f6',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  fontWeight: 700,
+                }}
+              >
                 Inspection Reports ({filteredDiagnoses.length})
               </h4>
             </div>
 
             {filteredDiagnoses.length === 0 ? (
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-dim)', fontStyle: 'italic' }}>
-                No diagnostic reports generated yet.
+              <p style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>
+                No diagnostic reports compiled yet.
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                {filteredDiagnoses.map((diag, index) => (
-                  <div
-                    key={diag.id || index}
-                    onClick={() => {
-                      onSelectDiagnosis(diag);
-                      onClose();
-                    }}
-                    style={{
-                      background: 'rgba(15, 23, 42, 0.7)',
-                      border: '1px solid rgba(59, 130, 246, 0.2)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '0.9rem',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--accent-cyan)';
-                      e.currentTarget.style.transform = 'translateX(-3px)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.2)';
-                      e.currentTarget.style.transform = 'translateX(0)';
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                        Report #{filteredDiagnoses.length - index}
-                      </span>
-                      <span style={{
-                        fontSize: '0.7rem',
-                        fontWeight: 700,
-                        color: diag.severity === 'CRITICAL' ? '#f43f5e' :
-                               diag.severity === 'HIGH' ? '#818cf8' :
-                               diag.severity === 'MEDIUM' ? 'var(--accent-cyan)' : 'var(--status-low)'
-                      }}>
-                        {diag.severity}
-                      </span>
+                {filteredDiagnoses.map((diag, index) => {
+                  const isCrit = diag.severity === 'CRITICAL';
+                  const isHigh = diag.severity === 'HIGH';
+                  const isMed = diag.severity === 'MEDIUM';
+                  const sevColor = isCrit ? 'var(--severity-critical)' : isHigh ? 'var(--severity-high)' : isMed ? 'var(--severity-medium)' : 'var(--severity-low)';
+                  const reportId = diag.id ? `#DX-${diag.id.replace(/-/g, '').slice(0, 5).toUpperCase()}` : `#DX-000${filteredDiagnoses.length - index}`;
+
+                  return (
+                    <div
+                      key={diag.id || index}
+                      onClick={() => {
+                        onSelectDiagnosis(diag);
+                        onClose();
+                      }}
+                      style={{
+                        background: '#111827',
+                        border: '1px solid #1E293B',
+                        borderRadius: 'var(--radius-lg)',
+                        padding: '0.85rem 1rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = '#ff6b00';
+                        e.currentTarget.style.transform = 'translateX(-3px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = '#1E293B';
+                        e.currentTarget.style.transform = 'translateX(0)';
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#ff6b00', fontWeight: 700 }}>
+                          {reportId}
+                        </span>
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: sevColor,
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {diag.severity}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 13, color: '#dfe2ee', fontWeight: 600, marginBottom: '0.25rem' }}>
+                        {diag.issue_title}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: '#94a3b8',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {diag.summary}
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.86rem', color: '#fff', fontWeight: 600, marginBottom: '0.25rem' }}>
-                      {diag.issue_title}
-                    </div>
-                    <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {diag.summary}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
