@@ -1,0 +1,34 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local databases and runtime directories
+*.sqlite3
+data/
+media/
+staticfiles/
+
+# Environment files with sensitive credentials
+.env
+.env.local
+.env.*.local
+
+# Git and OS metadata
+.git/
+.gitignore
+.DS_Store
+Thumbs.db
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# Documentation and temporary files
+*.log
