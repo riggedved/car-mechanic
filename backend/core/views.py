@@ -333,7 +333,7 @@ class DiagnosisView(APIView):
             recommended_services=report.get('recommended_services', []),
             safety_warning=report.get('safety_warning', ''),
             estimated_cost_range=report.get('estimated_cost_range', ''),
-            ai_generated=report.get('ai_generated', True)
+            ai_generated=True
         )
 
         serializer = DiagnosisSerializer(diagnosis_obj)
