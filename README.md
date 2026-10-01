@@ -626,20 +626,6 @@ services:
 
 ---
 
-## User Interface & Screenshots
-
-*(Add application screenshots or video walk-throughs here)*
-
-| Diagnostic Dialogue & OBD-II Lookup | Multimodal Upload & Diagnostic Card |
-| :---: | :---: |
-| *(Screenshot Placeholder)* | *(Screenshot Placeholder)* |
-
-| Workshop Booking Modal | Session History Drawer |
-| :---: | :---: |
-| *(Screenshot Placeholder)* | *(Screenshot Placeholder)* |
-
----
-
 ## Future Improvements
 
 The following items are planned enhancements for future iterations of the system:
